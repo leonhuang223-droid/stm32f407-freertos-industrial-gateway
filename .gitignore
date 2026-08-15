@@ -1,0 +1,61 @@
+# Build outputs and generated firmware artifacts
+build/
+out/
+dist/
+*.elf
+*.bin
+*.hex
+*.map
+*.lst
+*.size.json
+
+# Python caches and tooling state
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# CMake and compiler scratch files
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+Testing/
+
+# Editor and OS metadata
+.vscode/*
+!.vscode/settings.json
+!.vscode/c_cpp_properties.json
+!.vscode/tasks.json
+!.vscode/launch.json
+.idea/
+*.swp
+*.swo
+Thumbs.db
+Desktop.ini
+
+# LVGL upstream development assets are not used by this firmware build.
+third_party/lvgl/configs/
+third_party/lvgl/.devcontainer/
+third_party/lvgl/.github/
+third_party/lvgl/libs/
+third_party/lvgl/demos/
+third_party/lvgl/docs/
+third_party/lvgl/env_support/
+third_party/lvgl/examples/
+third_party/lvgl/scripts/
+third_party/lvgl/tests/
+third_party/lvgl/zephyr/
+third_party/lvgl/*.pack
+third_party/lvgl/.gitignore
+third_party/lvgl/.pre-commit-config.yaml
+third_party/lvgl/.typos.toml
+
+# Local logs and temporary files
+*.log
+*.tmp
+*.bak
+*.orig

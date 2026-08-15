@@ -1,0 +1,46 @@
+{
+  "version": 4,
+  "configurations": [
+    {
+      "name": "STM32F407 Gateway",
+      "compilerPath": "arm-none-eabi-gcc",
+      "cStandard": "c11",
+      "intelliSenseMode": "windows-gcc-arm",
+      "compilerArgs": [
+        "-mcpu=cortex-m4",
+        "-mthumb",
+        "-mfpu=fpv4-sp-d16",
+        "-mfloat-abi=hard"
+      ],
+      "defines": [
+        "STM32F407xx",
+        "USE_HAL_DRIVER",
+        "FIRMWARE_USE_FREERTOS=1",
+        "FIRMWARE_VECTOR_OFFSET=0x00020000U"
+      ],
+      "includePath": [
+        "${workspaceFolder}/firmware/platform/stm32f407/include",
+        "${workspaceFolder}/firmware/platform/stm32f407/cubemx/generated/stm32f407_gateway/Core/Inc",
+        "${workspaceFolder}/firmware/platform/stm32f407/cubemx/generated/stm32f407_gateway/Drivers/STM32F4xx_HAL_Driver/Inc",
+        "${workspaceFolder}/firmware/platform/stm32f407/cubemx/generated/stm32f407_gateway/Drivers/STM32F4xx_HAL_Driver/Inc/Legacy",
+        "${workspaceFolder}/firmware/platform/stm32f407/cubemx/generated/stm32f407_gateway/Drivers/CMSIS/Device/ST/STM32F4xx/Include",
+        "${workspaceFolder}/firmware/platform/stm32f407/cubemx/generated/stm32f407_gateway/Drivers/CMSIS/Include",
+        "${workspaceFolder}/firmware/common/include",
+        "${workspaceFolder}/firmware/app/core/include",
+        "${workspaceFolder}/firmware/app/devices/include",
+        "${workspaceFolder}/firmware/app/domain/include",
+        "${workspaceFolder}/firmware/app/rtos/include",
+        "${workspaceFolder}/third_party/freertos_kernel/include",
+        "${workspaceFolder}/third_party/freertos_kernel/portable/GCC/ARM_CM4F"
+      ],
+      "browse": {
+        "path": [
+          "${workspaceFolder}/firmware",
+          "${workspaceFolder}/third_party",
+          "${workspaceFolder}/tests"
+        ],
+        "limitSymbolsToIncludedHeaders": false
+      }
+    }
+  ]
+}

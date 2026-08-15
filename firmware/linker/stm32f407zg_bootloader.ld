@@ -1,0 +1,8 @@
+MEMORY
+{
+  FLASH (rx) : ORIGIN = 0x08000000, LENGTH = 64K
+  RAM (xrw)  : ORIGIN = 0x20000000, LENGTH = 128K
+  CCM (xrw)  : ORIGIN = 0x10000000, LENGTH = 64K
+}
+
+INCLUDE stm32f407zg_sections.ld

@@ -1,0 +1,27 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "F407 App A - ST-LINK",
+      "type": "cortex-debug",
+      "request": "launch",
+      "servertype": "stlink",
+      "device": "STM32F407ZG",
+      "cwd": "${workspaceFolder}",
+      "executable": "${workspaceFolder}/build/debug/artifacts/f407_app_a.elf",
+      "runToEntryPoint": "main",
+      "preLaunchTask": "F407: Build App A"
+    },
+    {
+      "name": "F407 Bootloader - ST-LINK",
+      "type": "cortex-debug",
+      "request": "launch",
+      "servertype": "stlink",
+      "device": "STM32F407ZG",
+      "cwd": "${workspaceFolder}",
+      "executable": "${workspaceFolder}/build/debug/artifacts/f407_bootloader.elf",
+      "runToEntryPoint": "main",
+      "preLaunchTask": "F407: Build All"
+    }
+  ]
+}

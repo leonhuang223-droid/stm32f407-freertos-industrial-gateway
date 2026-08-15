@@ -1,0 +1,22 @@
+{
+  "C_Cpp.intelliSenseEngine": "default",
+  "C_Cpp.autocomplete": "default",
+  "C_Cpp.errorSquiggles": "enabled",
+  "C_Cpp.default.compilerPath": "arm-none-eabi-gcc",
+  "C_Cpp.default.intelliSenseMode": "windows-gcc-arm",
+  "C_Cpp.default.cStandard": "c11",
+  "C_Cpp.default.compilerArgs": [
+    "-mcpu=cortex-m4",
+    "-mthumb",
+    "-mfpu=fpv4-sp-d16",
+    "-mfloat-abi=hard"
+  ],
+  "cmake.useCMakePresets": "always",
+  "cmake.configureOnOpen": false,
+  "cmake.copyCompileCommands": "${workspaceFolder}/build/compile_commands.json",
+  "stm32cube-ide-clangd.enable": false,
+  "stm32cube-ide-clangd.enableCodeCompletion": false,
+  "stm32cube-ide-clangd.enableHover": false,
+  "stm32cube-ide-clangd.enableLinting": false,
+  "stm32cube-ide-clangd.detectExtensionConflicts": false
+}

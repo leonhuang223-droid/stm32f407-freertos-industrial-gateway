@@ -271,6 +271,31 @@ static void test_config_transaction(void)
     assert(health.pending_requests == 0u);
 }
 
+static void test_config_reject_isolation(void)
+{
+    gateway_runtime_config_t config = make_config();
+    config_subsystem_t service;
+    gateway_storage_config_request_t first;
+    gateway_storage_config_request_t second;
+    config_patch_t patch = { GATEWAY_POINT_LOOP_CURRENT,
+                             CONFIG_FIELD_HIGH_THRESHOLD, 23000 };
+    assert(config_subsystem_construct(&service, &config) == SYS_OK);
+    assert(config_subsystem_prepare(&service, &patch, &first) == SYS_OK);
+    patch.field = CONFIG_FIELD_HYSTERESIS;
+    patch.value = 300;
+    assert(config_subsystem_prepare(&service, &patch, &second) == ERR_DEVICE_NOT_READY);
+    assert(config_subsystem_reject(&service, first.request_id + 1u, ERR_IO) == ERR_INVALID_ARG);
+    assert(service.health.pending_requests == 1u);
+    assert(config_subsystem_reject(&service, first.request_id, ERR_IO) == SYS_OK);
+    assert(config_subsystem_prepare(&service, &patch, &second) == SYS_OK);
+    assert(second.config.rules[0].high_threshold == config.rules[0].high_threshold);
+    assert(config_subsystem_commit(&service, &first) == ERR_INVALID_ARG);
+    assert(config_subsystem_reject(&service, first.request_id, ERR_IO) == ERR_INVALID_ARG);
+    assert(config_subsystem_commit(&service, &second) == SYS_OK);
+    assert(service.active.rules[0].hysteresis == 300);
+    assert(service.health.pending_requests == 0u);
+}
+
 static void test_active_alarm_blocks_reconfigure(void)
 {
     gateway_runtime_config_t config = make_config();
@@ -459,6 +484,7 @@ static void test_ui_pages(void)
 int main(void)
 {
     test_config_transaction();
+    test_config_reject_isolation();
     test_active_alarm_blocks_reconfigure();
     test_parser();
     test_cli_service();

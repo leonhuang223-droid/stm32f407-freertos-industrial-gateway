@@ -1,4 +1,5 @@
 enable_language(ASM)
+include("${PROJECT_SOURCE_DIR}/firmware/app/rtos/CMakeLists.txt")
 
 set(F407_CUBE_ROOT
     "${CMAKE_CURRENT_SOURCE_DIR}/cubemx/generated/stm32f407_gateway")
@@ -203,7 +204,7 @@ function(add_stm32f407_image TARGET_NAME)
             "${PROJECT_SOURCE_DIR}/firmware/app/devices/src/storage_media.c"
             "${PROJECT_SOURCE_DIR}/firmware/app/devices/src/w25q128.c"
             "${PROJECT_SOURCE_DIR}/firmware/app/devices/src/watchdog_device.c"
-            "${PROJECT_SOURCE_DIR}/firmware/app/rtos/src/app_rtos.c"
+            ${APP_RTOS_SOURCES}
             "${PROJECT_SOURCE_DIR}/firmware/app/protocols/src/can_protocol.c"
             "${PROJECT_SOURCE_DIR}/firmware/app/protocols/src/modbus_rtu_master.c"
             "${PROJECT_SOURCE_DIR}/firmware/app/protocols/src/mqtt_codec.c"
@@ -212,6 +213,8 @@ function(add_stm32f407_image TARGET_NAME)
             "${PROJECT_SOURCE_DIR}/firmware/app/subsystems/src/alarm_subsystem.c"
             "${PROJECT_SOURCE_DIR}/firmware/app/subsystems/src/cli_subsystem.c"
             "${PROJECT_SOURCE_DIR}/firmware/app/subsystems/src/config_subsystem.c"
+            "${PROJECT_SOURCE_DIR}/firmware/app/subsystems/src/config_transaction_service.c"
+            "${PROJECT_SOURCE_DIR}/firmware/app/subsystems/src/request_lifecycle.c"
             "${PROJECT_SOURCE_DIR}/firmware/app/subsystems/src/fieldbus_subsystem.c"
             "${PROJECT_SOURCE_DIR}/firmware/app/subsystems/src/network_subsystem.c"
             "${PROJECT_SOURCE_DIR}/firmware/app/subsystems/src/ota_manager.c"
@@ -232,6 +235,7 @@ function(add_stm32f407_image TARGET_NAME)
             "${PROJECT_SOURCE_DIR}/firmware/app/domain/include"
             "${PROJECT_SOURCE_DIR}/firmware/app/protocols/include"
             "${PROJECT_SOURCE_DIR}/firmware/app/rtos/include"
+            "${PROJECT_SOURCE_DIR}/firmware/app/rtos/src"
             "${PROJECT_SOURCE_DIR}/firmware/app/subsystems/include"
             "${PROJECT_SOURCE_DIR}/firmware/app/ui/include"
         )

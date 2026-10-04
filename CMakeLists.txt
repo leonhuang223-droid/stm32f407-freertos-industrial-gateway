@@ -45,6 +45,8 @@ if(BUILD_HOST_TESTS)
     add_subdirectory(tests/host/ui_cli_config)
     add_subdirectory(tests/host/display_touch)
     add_subdirectory(tests/host/reliability_power)
+    add_subdirectory(tests/host/runtime_services)
+    add_subdirectory(tests/host/rtos_runtime)
     add_subdirectory(tests/host/ota_update)
     if(Python3_Interpreter_FOUND)
         add_test(

@@ -82,6 +82,7 @@ add_library(control_storage_stack STATIC
     app/devices/src/w25q128.c
     app/subsystems/src/alarm_subsystem.c
     app/subsystems/src/config_subsystem.c
+    app/subsystems/src/config_transaction_service.c
     app/subsystems/src/storage_subsystem.c
 )
 
@@ -159,6 +160,7 @@ add_library(gateway_architecture STATIC
     app/subsystems/src/deep_power_controller.c
     app/subsystems/src/power_manager.c
     app/subsystems/src/supervisor_subsystem.c
+    app/subsystems/src/request_lifecycle.c
 )
 
 target_include_directories(gateway_architecture PUBLIC

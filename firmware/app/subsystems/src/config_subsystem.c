@@ -140,7 +140,12 @@ status_t config_subsystem_prepare(config_subsystem_t *subsystem,
         subsystem->initialized == 0u) {
         return ERR_INVALID_ARG;
     }
-    candidate = subsystem->staged;
+    /* Only one durable transaction may be outstanding. Later patches must
+     * start from the committed configuration, never from a rejected patch. */
+    if (subsystem->health.pending_requests != 0u) {
+        return ERR_DEVICE_NOT_READY;
+    }
+    candidate = subsystem->active;
     status = apply_patch(&candidate, patch);
     if (status == SYS_OK) {
         if (candidate.revision == UINT32_MAX) {
@@ -179,7 +184,10 @@ status_t config_subsystem_commit(
     }
     status = config_subsystem_validate(&request->config);
     if (status != SYS_OK || subsystem->health.pending_requests == 0u ||
-        request->config.revision <= subsystem->active.revision) {
+        request->request_id != subsystem->health.last_request_id ||
+        request->config.revision != subsystem->staged.revision ||
+        memcmp(&request->config, &subsystem->staged,
+               sizeof(request->config)) != 0) {
         subsystem->health.last_status = status != SYS_OK
             ? status : ERR_INVALID_ARG;
         return subsystem->health.last_status;
@@ -202,7 +210,8 @@ status_t config_subsystem_reject(config_subsystem_t *subsystem,
                                  uint32_t request_id, status_t reason)
 {
     if (subsystem == 0 || subsystem->initialized == 0u ||
-        subsystem->health.pending_requests == 0u || reason == SYS_OK) {
+        subsystem->health.pending_requests == 0u || reason == SYS_OK ||
+        request_id != subsystem->health.last_request_id) {
         return ERR_INVALID_ARG;
     }
     subsystem->health.rejected_requests++;

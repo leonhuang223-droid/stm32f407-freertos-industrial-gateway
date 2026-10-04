@@ -43,6 +43,8 @@ const char *error_to_string(status_t status)
         return "ERR_PROTOCOL";
     case ERR_BUS_OFF:
         return "ERR_BUS_OFF";
+    case ERR_IN_PROGRESS:
+        return "ERR_IN_PROGRESS";
     case ERR_DEVICE_NOT_READY:
         return "ERR_DEVICE_NOT_READY";
     case ERR_SENSOR_FAULT:

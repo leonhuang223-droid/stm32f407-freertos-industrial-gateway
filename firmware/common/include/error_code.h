@@ -29,7 +29,8 @@ typedef enum {
     ERR_SENSOR_FAULT, /**< Sensor reported a physical input or wiring fault. */
     ERR_RESET_REQUIRED, /**< Operation requires a controlled system reset. */
     ERR_PROTOCOL, /**< A fieldbus frame or protocol response is malformed. */
-    ERR_BUS_OFF /**< CAN controller entered the bus-off state. */
+    ERR_BUS_OFF, /**< CAN controller entered the bus-off state. */
+    ERR_IN_PROGRESS /**< Accepted operation needs another bounded service step. */
 } status_t;
 
 /**

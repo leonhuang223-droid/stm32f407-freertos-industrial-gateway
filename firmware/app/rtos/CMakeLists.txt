@@ -1,0 +1,16 @@
+set(APP_RTOS_SOURCES
+    "${CMAKE_CURRENT_LIST_DIR}/src/app_rtos.c"
+    "${CMAKE_CURRENT_LIST_DIR}/src/task_contexts.c"
+    "${CMAKE_CURRENT_LIST_DIR}/src/tasks/supervisor_task.c"
+    "${CMAKE_CURRENT_LIST_DIR}/src/tasks/acquisition_task.c"
+    "${CMAKE_CURRENT_LIST_DIR}/src/tasks/data_hub_task.c"
+    "${CMAKE_CURRENT_LIST_DIR}/src/tasks/fieldbus_tasks.c"
+    "${CMAKE_CURRENT_LIST_DIR}/src/tasks/network_task.c"
+    "${CMAKE_CURRENT_LIST_DIR}/src/tasks/storage_task.c"
+    "${CMAKE_CURRENT_LIST_DIR}/src/tasks/ota_task.c"
+    "${CMAKE_CURRENT_LIST_DIR}/src/tasks/ui_task.c"
+    "${CMAKE_CURRENT_LIST_DIR}/src/tasks/cli_task.c"
+    "${CMAKE_CURRENT_LIST_DIR}/src/services/ota_io_service.c"
+    "${CMAKE_CURRENT_LIST_DIR}/src/services/config_service.c"
+    "${CMAKE_CURRENT_LIST_DIR}/src/services/runtime_support.c"
+)

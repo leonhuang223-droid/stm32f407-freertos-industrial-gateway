@@ -1,4 +1,5 @@
 #include "esp8266.h"
+#include "dma_rx_stream.h"
 #include "mqtt_codec.h"
 #include "network_subsystem.h"
 #include "network_transport.h"
@@ -383,12 +384,15 @@ static int test_disconnect_reinitializes_transport(void)
 }
 
 typedef struct {
-    uint8_t rx[2048];
+    uint8_t rx[8192];
     size_t rx_length;
     size_t max_read;
     unsigned int init_calls;
     unsigned int suspend_calls;
     unsigned int resume_calls;
+    uint32_t now;
+    uint8_t fail_join;
+    uint8_t auto_connack;
 } fake_serial_t;
 
 static void serial_queue(fake_serial_t *serial, const char *text)
@@ -416,6 +420,14 @@ static status_t fake_serial_write(void *context, const uint8_t *data,
 
     (void)timeout_ms;
     if (length >= 2u && data[0] == 'A' && data[1] == 'T') {
+        if (length >= 6u && memcmp(data, "AT+RST", 6u) == 0) {
+            serial_queue(serial, "ready\r\n");
+            return SYS_OK;
+        }
+        if (serial->fail_join != 0u && length >= 8u &&
+            memcmp(data, "AT+CWJAP", 8u) == 0) {
+            return SYS_OK;
+        }
         if (length >= 11u && memcmp(data, "AT+CIPSTART", 11u) == 0) {
             serial_queue(serial, "CONNECT\r\n");
         } else if (length >= 10u && memcmp(data, "AT+CIPSEND", 10u) == 0) {
@@ -427,6 +439,11 @@ static status_t fake_serial_write(void *context, const uint8_t *data,
         }
     } else {
         serial_queue(serial, "SEND OK\r\n");
+        if (serial->auto_connack != 0u && data[0] == 0x10u) {
+            const uint8_t response[] = { '+', 'I', 'P', 'D', ',', '4', ':', 0x20, 2, 0, 0 };
+            memcpy(serial->rx + serial->rx_length, response, sizeof(response));
+            serial->rx_length += sizeof(response);
+        }
     }
     return SYS_OK;
 }
@@ -438,11 +455,12 @@ static status_t fake_serial_read(void *context, uint8_t *data,
     fake_serial_t *serial = context;
     size_t available;
 
-    (void)timeout_ms;
     if (serial->rx_length == 0u) {
+        serial->now += timeout_ms;
         *length = 0u;
         return ERR_TIMEOUT;
     }
+    serial->now++;
     available = serial->max_read != 0u && serial->max_read < capacity
         ? serial->max_read : capacity;
     *length = serial->rx_length < available ? serial->rx_length : available;
@@ -476,13 +494,19 @@ static status_t fake_serial_resume(void *context)
     return SYS_OK;
 }
 
+static uint32_t fake_serial_now_ms(void *context)
+{
+    return ((fake_serial_t *)context)->now;
+}
+
 static const esp8266_serial_ops_t fake_serial_ops = {
     fake_serial_init,
     fake_serial_write,
     fake_serial_read,
     fake_serial_flush,
     fake_serial_suspend,
-    fake_serial_resume
+    fake_serial_resume,
+    fake_serial_now_ms
 };
 
 static int test_esp8266_raw_tcp(void)
@@ -506,16 +530,15 @@ static int test_esp8266_raw_tcp(void)
 
     serial.max_read = 3u;
     serial_queue(&serial, "+IPD,4:ACK!");
-    for (attempt = 0u; attempt < 8u; ++attempt) {
-        status_t status = esp8266_tcp_receive(
-            &esp, payload, sizeof(payload), &length, 10u);
-
-        if (status == SYS_OK) {
-            break;
-        }
-        EXPECT_TRUE(status == ERR_TIMEOUT);
+    for (attempt = 0u; attempt < sizeof(payload);) {
+        size_t received;
+        EXPECT_STATUS(SYS_OK, esp8266_tcp_receive(
+            &esp, &payload[attempt], sizeof(payload) - attempt,
+            &received, 100u));
+        EXPECT_TRUE(received != 0u);
+        attempt += (unsigned int)received;
     }
-    EXPECT_TRUE(length == 4u && memcmp(payload, "ACK!", 4u) == 0);
+    EXPECT_TRUE(memcmp(payload, "ACK!", 4u) == 0);
     serial.max_read = 0u;
     serial_queue(&serial, "CLOSED\r\n");
     EXPECT_STATUS(ERR_IO, esp8266_tcp_receive(
@@ -524,6 +547,193 @@ static int test_esp8266_raw_tcp(void)
     EXPECT_STATUS(SYS_OK, esp8266_resume(&esp));
     EXPECT_TRUE(serial.init_calls == 1u && serial.suspend_calls == 1u &&
                 serial.resume_calls == 1u);
+    return 0;
+}
+
+static int test_esp8266_stream_boundaries(void)
+{
+    fake_serial_t serial = { 0 };
+    esp8266_t esp;
+    esp8266_config_t config = { "ssid", "password", 1000u, 15000u, 0u };
+    const size_t lengths[] = { 800u, 1460u, 4096u };
+    const size_t fragments[] = { 1u, 3u, 256u };
+    size_t test;
+    EXPECT_STATUS(SYS_OK, esp8266_construct(&esp, &fake_serial_ops,
+                                           &serial, &config));
+    EXPECT_STATUS(SYS_OK, esp8266_init(&esp));
+    for (test = 0u; test < 3u; ++test) {
+        uint8_t expected[4096];
+        uint8_t actual[4096];
+        char header[32];
+        size_t offset = 0u;
+        size_t index;
+        EXPECT_STATUS(SYS_OK, esp8266_tcp_connect(&esp, "server", 80u));
+        serial.rx_length = 0u;
+        serial.max_read = fragments[test];
+        for (index = 0u; index < lengths[test]; ++index) {
+            expected[index] = (uint8_t)index;
+        }
+        memcpy(expected + 10u, "CLOSED+IPD,4:ERROR", 18u);
+        snprintf(header, sizeof(header), "+IPD,%u:", (unsigned)lengths[test]);
+        serial_queue(&serial, header);
+        memcpy(serial.rx + serial.rx_length, expected, lengths[test]);
+        serial.rx_length += lengths[test];
+        serial_queue(&serial, "\r\nCLOSED\r\n");
+        while (offset < lengths[test]) {
+            size_t received = 0u;
+            EXPECT_STATUS(SYS_OK, esp8266_tcp_receive(&esp, actual + offset,
+                256u, &received, 1000u));
+            EXPECT_TRUE(received > 0u && received <= 256u);
+            offset += received;
+        }
+        EXPECT_TRUE(memcmp(expected, actual, lengths[test]) == 0);
+        EXPECT_STATUS(ERR_IO, esp8266_tcp_receive(&esp, actual, 256u,
+                                                  &offset, 1000u));
+        EXPECT_TRUE(offset == 0u);
+        serial.max_read = 0u;
+    }
+    /* Payload plus CLOSED in one read, drained in multiple caller reads. */
+    EXPECT_STATUS(SYS_OK, esp8266_tcp_connect(&esp, "server", 80u));
+    serial.rx_length = 0u;
+    serial_queue(&serial, "+IPD,8:12345678CLOSED\r\n");
+    {
+        uint8_t data[4];
+        size_t received;
+        EXPECT_STATUS(SYS_OK, esp8266_tcp_receive(&esp, data, 4u, &received, 100u));
+        EXPECT_TRUE(received == 4u && memcmp(data, "1234", 4u) == 0);
+        EXPECT_STATUS(SYS_OK, esp8266_tcp_receive(&esp, data, 4u, &received, 100u));
+        EXPECT_TRUE(received == 4u && memcmp(data, "5678", 4u) == 0);
+        EXPECT_STATUS(ERR_IO, esp8266_tcp_receive(&esp, data, 4u, &received, 100u));
+    }
+    EXPECT_STATUS(SYS_OK, esp8266_tcp_connect(&esp, "server", 80u));
+    serial.rx_length = 0u;
+    serial_queue(&serial, "+IP");
+    {
+        uint8_t data[4];
+        size_t received;
+        EXPECT_STATUS(ERR_TIMEOUT, esp8266_tcp_receive(&esp, data, 4u, &received, 10u));
+        serial_queue(&serial, "D,4:DATA");
+        EXPECT_STATUS(SYS_OK, esp8266_tcp_send(&esp, (const uint8_t *)"request", 7u));
+        EXPECT_STATUS(SYS_OK, esp8266_tcp_receive(&esp, data, 4u, &received, 100u));
+        EXPECT_TRUE(received == 4u && memcmp(data, "DATA", 4u) == 0);
+    }
+    {
+        unsigned int frame;
+        size_t total = 0u;
+        uint8_t data[64];
+        for (frame = 0u; frame < 500u; ++frame) {
+            serial_queue(&serial, "+IPD,1:a\r\n");
+        }
+        while (total < 500u) {
+            size_t received;
+            EXPECT_STATUS(SYS_OK, esp8266_tcp_receive(&esp, data, sizeof(data), &received, 100u));
+            EXPECT_TRUE(received != 0u);
+            for (frame = 0u; frame < received; ++frame) { EXPECT_TRUE(data[frame] == 'a'); }
+            total += received;
+        }
+        EXPECT_TRUE(total == 500u && esp.at_length < 16u);
+    }
+    serial.fail_join = 1u;
+    {
+        uint32_t start = serial.now;
+        EXPECT_STATUS(ERR_TIMEOUT, esp8266_init(&esp));
+        EXPECT_TRUE(serial.now - start >= 15000u && serial.now - start < 15100u);
+    }
+    return 0;
+}
+
+static int test_dma_rx_stream(void)
+{
+    uint8_t dma[8] = { 0, 1, 2, 3, 4, 5, 6, 7 };
+    uint8_t ring[20];
+    uint8_t data[20];
+    dma_rx_stream_t stream = { dma, 8u, ring, 20u, 0u, 0u, 0u, 0u };
+    size_t index;
+    dma_rx_stream_publish(&stream, 4u); /* HT */
+    dma_rx_stream_publish(&stream, 4u); /* coincident IDLE */
+    dma_rx_stream_publish(&stream, 8u); /* TC */
+    dma_rx_stream_publish(&stream, 8u); /* coincident IDLE */
+    EXPECT_TRUE(dma_rx_stream_read(&stream, data, sizeof(data)) == 8u);
+    for (index = 0u; index < 8u; ++index) {
+        EXPECT_TRUE(data[index] == index);
+        dma[index] = (uint8_t)(index + 8u);
+    }
+    dma_rx_stream_publish(&stream, 3u);
+    EXPECT_TRUE(dma_rx_stream_read(&stream, data, sizeof(data)) == 3u);
+    EXPECT_TRUE(data[0] == 8u && data[2] == 10u);
+    dma_rx_stream_publish(&stream, 8u);
+    dma_rx_stream_publish(&stream, 4u);
+    dma_rx_stream_publish(&stream, 8u);
+    dma_rx_stream_publish(&stream, 4u);
+    dma_rx_stream_publish(&stream, 8u);
+    EXPECT_TRUE(stream.overflow != 0u);
+    dma_rx_stream_reset(&stream);
+    EXPECT_TRUE(dma_rx_stream_read(&stream, data, sizeof(data)) == 0u);
+    EXPECT_TRUE(stream.overflow == 0u);
+    return 0;
+}
+
+static int test_cooperative_connect_and_cancel(void)
+{
+    fake_serial_t serial = { 0 };
+    esp8266_t esp;
+    network_transport_t transport;
+    network_subsystem_t network;
+    esp8266_config_t esp_config = { "ssid", "password", 1000u, 15000u, 0u };
+    network_subsystem_config_t config = network_config();
+    unsigned int count;
+    EXPECT_STATUS(SYS_OK, esp8266_construct(&esp, &fake_serial_ops, &serial, &esp_config));
+    EXPECT_STATUS(SYS_OK, network_transport_construct(&transport, esp8266_network_transport_ops(), &esp));
+    transport.connect_steps = esp8266_connect_step_ops();
+    EXPECT_STATUS(SYS_OK, network_subsystem_construct(&network, &transport, &config));
+    serial.fail_join = 1u;
+    EXPECT_STATUS(SYS_OK, network_subsystem_start(&network, serial.now));
+    for (count = 0u; count < 20u && !(esp.init_phase == 5u && esp.command_pending); ++count) {
+        uint32_t before = serial.now;
+        EXPECT_STATUS(ERR_IN_PROGRESS, network_subsystem_process(&network, serial.now));
+        EXPECT_TRUE(serial.now - before <= 10u);
+        serial.now += 20u;
+    }
+    EXPECT_TRUE(esp.init_phase == 5u && esp.command_pending != 0u);
+    EXPECT_STATUS(SYS_OK, network_subsystem_acquire_ota_lease(&network, serial.now));
+    EXPECT_TRUE(esp.command_pending == 0u && esp.needs_reset != 0u);
+    EXPECT_TRUE(network.health.ota_lease_active != 0u);
+    EXPECT_STATUS(SYS_OK, network_subsystem_release_ota_lease(&network, serial.now));
+    serial.fail_join = 0u;
+    serial.auto_connack = 1u;
+    for (count = 0u; count < 40u && network.health.mqtt_ready == 0u; ++count) {
+        status_t status = network_subsystem_process(&network, serial.now);
+        EXPECT_TRUE(status == SYS_OK || status == ERR_IN_PROGRESS);
+        serial.now += 20u;
+    }
+    EXPECT_TRUE(network.health.mqtt_ready != 0u && network.health.successful_connections == 1u);
+    EXPECT_TRUE(esp.needs_reset == 0u);
+    EXPECT_STATUS(SYS_OK, network_subsystem_suspend(&network, serial.now));
+    EXPECT_STATUS(SYS_OK, network_subsystem_resume(&network, serial.now));
+    serial.fail_join = 1u;
+    for (count = 0u; count < 20u && !(esp.init_phase == 5u && esp.command_pending); ++count) {
+        EXPECT_STATUS(ERR_IN_PROGRESS, network_subsystem_process(&network, serial.now));
+        serial.now += 20u;
+    }
+    serial.now = esp.command_deadline_ms;
+    EXPECT_STATUS(ERR_TIMEOUT, network_subsystem_process(&network, serial.now));
+    EXPECT_TRUE(network.health.state == NETWORK_STATE_OFFLINE);
+    EXPECT_TRUE(network.health.retry_due_ms > serial.now);
+    /* A Wi-Fi DISCONNECT line is not a TCP CONNECT response. */
+    serial.fail_join = 0u;
+    serial.now = network.health.retry_due_ms;
+    for (count = 0u; count < 40u && transport.initialized == 0u; ++count) {
+        EXPECT_STATUS(ERR_IN_PROGRESS, network_subsystem_process(&network, serial.now));
+        serial.now += 20u;
+    }
+    EXPECT_TRUE(transport.initialized != 0u);
+    EXPECT_STATUS(ERR_IN_PROGRESS, network_subsystem_process(&network, serial.now));
+    serial.rx_length = 0u;
+    serial_queue(&serial, "WIFI DISCONNECT\r\n");
+    EXPECT_STATUS(ERR_IN_PROGRESS, network_subsystem_process(&network, serial.now));
+    EXPECT_TRUE(esp.health.tcp_connected == 0u);
+    serial.now = esp.command_deadline_ms;
+    EXPECT_STATUS(ERR_TIMEOUT, network_subsystem_process(&network, serial.now));
     return 0;
 }
 
@@ -560,7 +770,9 @@ int main(void)
         test_retry_and_ota_lease() != 0 ||
         test_disconnect_reinitializes_transport() != 0 ||
         test_network_suspend_resume() != 0 ||
-        test_esp8266_raw_tcp() != 0) {
+        test_esp8266_raw_tcp() != 0 ||
+        test_esp8266_stream_boundaries() != 0 || test_dma_rx_stream() != 0 ||
+        test_cooperative_connect_and_cancel() != 0) {
         return 1;
     }
     puts("network_mqtt.host: PASS");

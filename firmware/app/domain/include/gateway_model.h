@@ -162,6 +162,7 @@ typedef enum {
 typedef struct {
     gateway_network_control_type_t type;
     uint32_t request_id;
+    uint32_t deadline_ms; /* Zero means no expiry; internal OTA requests expire. */
 } gateway_network_control_request_t;
 
 typedef struct {

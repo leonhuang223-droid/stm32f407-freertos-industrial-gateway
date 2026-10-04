@@ -218,6 +218,7 @@ status_t app_context_configure_network(
     if (status != SYS_OK) {
         return status;
     }
+    context->network_transport.connect_steps = esp8266_connect_step_ops();
     status = network_subsystem_construct(&context->network,
                                          &context->network_transport,
                                          &config->network);

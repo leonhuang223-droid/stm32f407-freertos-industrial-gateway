@@ -1,4 +1,4 @@
-name: Host tests
+name: Build and tests
 
 on:
   push:
@@ -20,3 +20,43 @@ jobs:
         run: cmake --build --preset host-debug --parallel
       - name: Test
         run: ctest --preset host-debug
+
+  arm-build:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        preset: [debug, release]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build tools
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - uses: actions/cache@v4
+        id: arm-toolchain
+        with:
+          path: .toolchains/arm-gnu-toolchain-14.3.rel1-x86_64-arm-none-eabi
+          key: arm-gnu-14.3.rel1-linux-x86_64-8f6903f8
+      - name: Install verified Arm GNU Toolchain
+        if: steps.arm-toolchain.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive=arm-gnu-toolchain-14.3.rel1-x86_64-arm-none-eabi.tar.xz
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/$archive" \
+            "https://developer.arm.com/-/media/Files/downloads/gnu/14.3.rel1/binrel/$archive"
+          echo "8f6903f8ceb084d9227b9ef991490413014d991874a1e34074443c2a72b14dbd  $RUNNER_TEMP/$archive" | sha256sum --check
+          mkdir -p .toolchains
+          tar -xf "$RUNNER_TEMP/$archive" -C .toolchains
+      - name: Configure
+        env:
+          ARM_GNU_TOOLCHAIN_ROOT: ${{ github.workspace }}/.toolchains/arm-gnu-toolchain-14.3.rel1-x86_64-arm-none-eabi
+        run: cmake --preset ${{ matrix.preset }}
+      - name: Build and verify artifacts
+        run: cmake --build --preset ${{ matrix.preset }} --parallel
+      - uses: actions/upload-artifact@v4
+        with:
+          name: f407-${{ matrix.preset }}
+          path: |
+            build/${{ matrix.preset }}/artifacts/*.elf
+            build/${{ matrix.preset }}/artifacts/*.bin
+            build/${{ matrix.preset }}/artifacts/*.hex
+            build/${{ matrix.preset }}/artifacts/*.size.json

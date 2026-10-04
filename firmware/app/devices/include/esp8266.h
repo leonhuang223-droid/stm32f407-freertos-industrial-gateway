@@ -20,6 +20,8 @@ typedef struct {
     status_t (*flush)(void *context);
     status_t (*suspend)(void *context);
     status_t (*resume)(void *context);
+    /* Optional monotonic clock, used to keep fragmented reads on one deadline. */
+    uint32_t (*now_ms)(void *context);
 } esp8266_serial_ops_t;
 
 typedef struct {
@@ -57,6 +59,11 @@ typedef struct {
     size_t at_length;
     uint8_t tcp_buffer[ESP8266_TCP_BUFFER_SIZE];
     size_t tcp_length;
+    size_t ipd_remaining;
+    uint32_t command_deadline_ms;
+    uint8_t command_pending;
+    uint8_t init_phase;
+    uint8_t needs_reset;
     esp8266_health_t health;
 } esp8266_t;
 
@@ -78,5 +85,6 @@ status_t esp8266_resume(esp8266_t *device);
 status_t esp8266_get_health(const esp8266_t *device,
                             esp8266_health_t *health);
 const network_transport_ops_t *esp8266_network_transport_ops(void);
+const network_connect_step_ops_t *esp8266_connect_step_ops(void);
 
 #endif

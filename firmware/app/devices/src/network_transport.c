@@ -30,6 +30,50 @@ status_t network_transport_init(network_transport_t *transport)
     return status;
 }
 
+status_t network_transport_init_step(network_transport_t *transport, uint32_t now_ms)
+{
+    status_t status;
+    if (transport == 0 || transport->ops == 0) {
+        return ERR_INVALID_ARG;
+    }
+    if (transport->connect_steps == 0) {
+        return network_transport_init(transport);
+    }
+    status = transport->connect_steps->init_step(transport->context, now_ms);
+    if (status == SYS_OK) {
+        transport->initialized = 1u;
+        transport->connected = 0u;
+    }
+    return status;
+}
+
+status_t network_transport_connect_step(network_transport_t *transport,
+    const char *host, uint16_t port, uint32_t now_ms)
+{
+    status_t status;
+    if (transport == 0 || transport->initialized == 0u) {
+        return ERR_DEVICE_NOT_READY;
+    }
+    if (transport->connect_steps == 0) {
+        return network_transport_connect(transport, host, port);
+    }
+    status = transport->connect_steps->connect_step(transport->context, host, port, now_ms);
+    if (status == SYS_OK) {
+        transport->connected = 1u;
+    }
+    return status;
+}
+
+void network_transport_cancel_connect(network_transport_t *transport)
+{
+    if (transport != 0 && transport->connect_steps != 0) {
+        transport->connect_steps->cancel(transport->context);
+        if (transport->connected == 0u) {
+            transport->initialized = 0u;
+        }
+    }
+}
+
 status_t network_transport_connect(network_transport_t *transport,
                                     const char *host, uint16_t port)
 {
@@ -87,9 +131,10 @@ status_t network_transport_suspend(network_transport_t *transport)
 {
     status_t status;
 
-    if (transport == 0 || transport->initialized == 0u) {
+    if (transport == 0 || transport->ops == 0) {
         return ERR_DEVICE_NOT_READY;
     }
+    network_transport_cancel_connect(transport);
     (void)network_transport_close(transport);
     status = transport->ops->suspend != 0
         ? transport->ops->suspend(transport->context) : SYS_OK;

@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define ESP8266_READ_CHUNK 256u
-#define ESP8266_MAX_RESPONSE_READS 12u
+#define ESP8266_WAIT_SLICE_MS 100u
 
 static int copy_text(char *destination, size_t capacity, const char *source)
 {
@@ -38,6 +38,24 @@ static size_t find_bytes(const uint8_t *buffer, size_t length,
     return SIZE_MAX;
 }
 
+static size_t find_response(const uint8_t *buffer, size_t length, const char *token)
+{
+    size_t offset = 0u;
+    while (offset < length) {
+        size_t index = find_bytes(buffer + offset, length - offset, token);
+        if (index == SIZE_MAX) {
+            return SIZE_MAX;
+        }
+        index += offset;
+        if (token[0] == '>' || index == 0u ||
+            buffer[index - 1u] == '\r' || buffer[index - 1u] == '\n') {
+            return index;
+        }
+        offset = index + 1u;
+    }
+    return SIZE_MAX;
+}
+
 static void remove_at_range(esp8266_t *device, size_t start, size_t length)
 {
     if (length == 0u || start >= device->at_length ||
@@ -49,77 +67,88 @@ static void remove_at_range(esp8266_t *device, size_t start, size_t length)
     device->at_length -= length;
 }
 
+/* Discard consumed AT chatter without discarding a fragmented stream marker.
+ * Receive-only HTTP streams may contain thousands of short +IPD frames. */
+static void retain_stream_marker(esp8266_t *device, int retain_close)
+{
+    size_t start = find_bytes(device->at_buffer, device->at_length, "+IPD,");
+    size_t keep = 0u;
+    size_t count;
+    if (start != SIZE_MAX) {
+        remove_at_range(device, 0u, start);
+        return;
+    }
+    for (count = 1u; count <= 4u && count <= device->at_length; ++count) {
+        if (memcmp(device->at_buffer + device->at_length - count, "+IPD,", count) == 0) {
+            keep = count;
+        }
+    }
+    if (retain_close) {
+        for (count = 1u; count <= 7u && count <= device->at_length; ++count) {
+            if (memcmp(device->at_buffer + device->at_length - count, "CLOSED\r\n", count) == 0 && count > keep) {
+                keep = count;
+            }
+        }
+    }
+    if (keep != 0u) {
+        memmove(device->at_buffer, device->at_buffer + device->at_length - keep, keep);
+    }
+    device->at_length = keep;
+}
+
+/* AT text and binary payload have separate storage. A frame may be larger
+ * than either buffer; tcp_receive drains it as a stream. */
 static status_t extract_ipd(esp8266_t *device)
 {
-    static const char prefix[] = "+IPD,";
+    size_t start = find_bytes(device->at_buffer, device->at_length, "+IPD,");
+    size_t index;
+    size_t length = 0u;
 
-    for (;;) {
-        size_t prefix_index = find_bytes(device->at_buffer,
-                                         device->at_length, prefix);
-        size_t index;
-        size_t payload_length = 0u;
-        size_t payload_start;
-
-        if (prefix_index == SIZE_MAX) {
-            return SYS_OK;
-        }
-        index = prefix_index + sizeof(prefix) - 1u;
-        if (index >= device->at_length) {
-            return ERR_DEVICE_NOT_READY;
-        }
-        if (device->at_buffer[index] < '0' ||
-            device->at_buffer[index] > '9') {
-            remove_at_range(device, prefix_index, sizeof(prefix) - 1u);
-            device->health.parse_errors++;
-            continue;
-        }
-        while (index < device->at_length &&
-               device->at_buffer[index] >= '0' &&
-               device->at_buffer[index] <= '9') {
-            size_t digit = (size_t)(device->at_buffer[index] - '0');
-
-            if (payload_length > (ESP8266_TCP_BUFFER_SIZE - digit) / 10u) {
-                remove_at_range(device, prefix_index,
-                                index - prefix_index + 1u);
-                device->health.parse_errors++;
-                return ERR_NO_MEMORY;
-            }
-            payload_length = payload_length * 10u + digit;
-            index++;
-        }
-        if (index >= device->at_length) {
-            return ERR_DEVICE_NOT_READY;
-        }
-        if (device->at_buffer[index] != ':') {
-            remove_at_range(device, prefix_index,
-                            index - prefix_index + 1u);
-            device->health.parse_errors++;
-            continue;
-        }
-        payload_start = index + 1u;
-        if (payload_length > device->at_length - payload_start) {
-            return ERR_DEVICE_NOT_READY;
-        }
-        if (payload_length > ESP8266_TCP_BUFFER_SIZE - device->tcp_length) {
-            device->health.parse_errors++;
-            return ERR_QUEUE_FULL;
-        }
-        memcpy(&device->tcp_buffer[device->tcp_length],
-               &device->at_buffer[payload_start], payload_length);
-        device->tcp_length += payload_length;
-        device->health.tcp_rx_bytes += (uint32_t)payload_length;
-        remove_at_range(device, prefix_index,
-                        payload_start + payload_length - prefix_index);
+    if (start == SIZE_MAX) {
+        return SYS_OK;
     }
+    index = start + 5u;
+    if (index == device->at_length) {
+        return SYS_OK;
+    }
+    if (device->at_buffer[index] < '0' || device->at_buffer[index] > '9') {
+        return ERR_PROTOCOL;
+    }
+    while (index < device->at_length &&
+           device->at_buffer[index] >= '0' && device->at_buffer[index] <= '9') {
+        size_t digit = device->at_buffer[index++] - '0';
+        if (length > (UINT32_MAX - digit) / 10u) {
+            return ERR_PROTOCOL;
+        }
+        length = length * 10u + digit;
+    }
+    if (index == device->at_length) {
+        return SYS_OK;
+    }
+    if (device->at_buffer[index] != ':') {
+        return ERR_PROTOCOL;
+    }
+    remove_at_range(device, start, index + 1u - start);
+    device->ipd_remaining = length;
+    return SYS_OK;
 }
 
 static status_t ingest_serial(esp8266_t *device, uint32_t timeout_ms)
 {
     uint8_t chunk[ESP8266_READ_CHUNK];
     size_t length = 0u;
-    status_t status = device->serial_ops->read(
-        device->serial_context, chunk, sizeof(chunk), &length, timeout_ms);
+    size_t index;
+    size_t capacity = ESP8266_TCP_BUFFER_SIZE - device->tcp_length;
+    status_t status;
 
+    if (capacity == 0u) {
+        return ERR_QUEUE_FULL;
+    }
+    if (capacity > sizeof(chunk)) {
+        capacity = sizeof(chunk);
+    }
+    status = device->serial_ops->read(device->serial_context, chunk,
+                                      capacity, &length, timeout_ms);
     if (status != SYS_OK) {
         if (status != ERR_TIMEOUT) {
             device->health.io_errors++;
@@ -129,14 +158,46 @@ static status_t ingest_serial(esp8266_t *device, uint32_t timeout_ms)
     if (length == 0u) {
         return ERR_TIMEOUT;
     }
-    if (length > ESP8266_AT_BUFFER_SIZE - device->at_length) {
-        device->health.parse_errors++;
-        return ERR_NO_MEMORY;
+    if (length > capacity) {
+        return ERR_PROTOCOL;
     }
-    memcpy(&device->at_buffer[device->at_length], chunk, length);
-    device->at_length += length;
-    status = extract_ipd(device);
-    return status == ERR_DEVICE_NOT_READY ? SYS_OK : status;
+    for (index = 0u; index < length; ++index) {
+        if (device->ipd_remaining != 0u) {
+            device->tcp_buffer[device->tcp_length++] = chunk[index];
+            device->ipd_remaining--;
+            device->health.tcp_rx_bytes++;
+        } else {
+            if (device->at_length == sizeof(device->at_buffer)) {
+                device->health.parse_errors++;
+                return ERR_NO_MEMORY;
+            }
+            device->at_buffer[device->at_length++] = chunk[index];
+            status = extract_ipd(device);
+            if (status != SYS_OK) {
+                device->health.parse_errors++;
+                return status;
+            }
+            if (find_response(device->at_buffer, device->at_length, "CLOSED\r\n") != SIZE_MAX) {
+                device->health.tcp_connected = 0u;
+                device->health.last_error = ERR_IO;
+            }
+        }
+    }
+    return SYS_OK;
+}
+
+static uint32_t clock_ms(const esp8266_t *device)
+{
+    return device->serial_ops->now_ms != 0
+        ? device->serial_ops->now_ms(device->serial_context) : 0u;
+}
+
+static uint32_t remaining_ms(const esp8266_t *device, uint32_t start,
+                             uint32_t budget, uint32_t fallback_elapsed)
+{
+    uint32_t elapsed = device->serial_ops->now_ms != 0
+        ? clock_ms(device) - start : fallback_elapsed;
+    return elapsed < budget ? budget - elapsed : 0u;
 }
 
 static void consume_token(esp8266_t *device, size_t index,
@@ -149,24 +210,23 @@ static status_t wait_for_response(esp8266_t *device, const char *success,
                                   const char *alternate,
                                   uint32_t timeout_ms)
 {
-    uint32_t slice = timeout_ms / ESP8266_MAX_RESPONSE_READS;
-    unsigned int attempt;
+    uint32_t start = clock_ms(device);
+    uint32_t elapsed = 0u;
 
-    if (slice == 0u) {
-        slice = 1u;
-    }
-    for (attempt = 0u; attempt < ESP8266_MAX_RESPONSE_READS; ++attempt) {
+    for (;;) {
         size_t index;
         status_t status;
 
-        (void)extract_ipd(device);
-        index = find_bytes(device->at_buffer, device->at_length, success);
+        uint32_t remaining;
+        uint32_t slice;
+
+        index = find_response(device->at_buffer, device->at_length, success);
         if (index != SIZE_MAX) {
             consume_token(device, index, success);
             return SYS_OK;
         }
         if (alternate != 0) {
-            index = find_bytes(device->at_buffer, device->at_length,
+            index = find_response(device->at_buffer, device->at_length,
                                alternate);
             if (index != SIZE_MAX) {
                 consume_token(device, index, alternate);
@@ -180,12 +240,18 @@ static status_t wait_for_response(esp8266_t *device, const char *success,
             device->at_length = 0u;
             return ERR_WIFI;
         }
+        remaining = remaining_ms(device, start, timeout_ms, elapsed);
+        if (remaining == 0u) {
+            return ERR_TIMEOUT;
+        }
+        slice = remaining < ESP8266_WAIT_SLICE_MS
+            ? remaining : ESP8266_WAIT_SLICE_MS;
         status = ingest_serial(device, slice);
+        elapsed += status == ERR_TIMEOUT ? slice : 1u;
         if (status != SYS_OK && status != ERR_TIMEOUT) {
             return status;
         }
     }
-    return ERR_TIMEOUT;
 }
 
 static status_t write_serial(esp8266_t *device, const uint8_t *data,
@@ -206,10 +272,8 @@ static status_t send_command(esp8266_t *device, const char *command,
 {
     status_t status;
 
-    if (device->serial_ops->flush != 0) {
-        (void)device->serial_ops->flush(device->serial_context);
-    }
-    device->at_length = 0u;
+    /* Preserve unsolicited +IPD received during command transmission. */
+    retain_stream_marker(device, 0);
     status = write_serial(device, (const uint8_t *)command,
                           strlen(command), timeout_ms);
     if (status == SYS_OK) {
@@ -229,7 +293,8 @@ status_t esp8266_construct(esp8266_t *device,
         config == 0 || serial_ops->init == 0 || serial_ops->write == 0 ||
         serial_ops->read == 0 || config->ssid == 0 ||
         config->ssid[0] == '\0' || config->password == 0 ||
-        config->command_timeout_ms == 0u || config->join_timeout_ms == 0u) {
+        config->command_timeout_ms == 0u || config->join_timeout_ms == 0u ||
+        config->command_timeout_ms > INT32_MAX || config->join_timeout_ms > INT32_MAX) {
         return ERR_INVALID_ARG;
     }
     memset(device, 0, sizeof(*device));
@@ -253,6 +318,13 @@ static status_t initialize_module(esp8266_t *device)
     int written;
     status_t status;
 
+    if (device->needs_reset != 0u) {
+        status = send_command(device, "AT+RST\r\n", "ready", 0, 3000u);
+        if (status != SYS_OK) {
+            return status;
+        }
+        device->needs_reset = 0u;
+    }
     status = send_command(device, "AT\r\n", "OK", 0,
                           device->command_timeout_ms);
     if (status == SYS_OK) {
@@ -270,7 +342,7 @@ static status_t initialize_module(esp8266_t *device)
         if (written < 0 || (size_t)written >= sizeof(command)) {
             status = ERR_NO_MEMORY;
         } else {
-            status = send_command(device, command, "OK", "WIFI GOT IP",
+            status = send_command(device, command, "OK", 0,
                                   device->join_timeout_ms);
         }
     }
@@ -315,13 +387,19 @@ status_t esp8266_tcp_connect(esp8266_t *device, const char *host,
         device->health.initialized == 0u) {
         return ERR_DEVICE_NOT_READY;
     }
+    device->tcp_length = 0u;
+    device->ipd_remaining = 0u;
+    device->at_length = 0u;
+    if (device->serial_ops->flush != 0) {
+        (void)device->serial_ops->flush(device->serial_context);
+    }
     written = snprintf(command, sizeof(command),
                        "AT+CIPSTART=\"TCP\",\"%s\",%u\r\n",
                        host, (unsigned int)port);
     if (written < 0 || (size_t)written >= sizeof(command)) {
         return ERR_NO_MEMORY;
     }
-    status = send_command(device, command, "CONNECT", "ALREADY CONNECTED",
+    status = send_command(device, command, "CONNECT\r\n", "ALREADY CONNECTED\r\n",
                           device->join_timeout_ms);
     if (status == SYS_OK) {
         device->health.tcp_connected = 1u;
@@ -370,30 +448,47 @@ status_t esp8266_tcp_receive(esp8266_t *device, uint8_t *data,
                              size_t capacity, size_t *length,
                              uint32_t timeout_ms)
 {
-    status_t status = SYS_OK;
+    uint32_t start;
+    uint32_t elapsed = 0u;
 
+    if (length != 0) {
+        *length = 0u;
+    }
     if (device == 0 || data == 0 || capacity == 0u || length == 0 ||
-        device->health.tcp_connected == 0u) {
-        return ERR_DEVICE_NOT_READY;
+        timeout_ms == 0u) {
+        return ERR_INVALID_ARG;
     }
-    *length = 0u;
-    if (device->tcp_length == 0u) {
-        status = ingest_serial(device, timeout_ms);
-        if (status != SYS_OK) {
-            return status;
+    start = clock_ms(device);
+    for (;;) {
+        uint32_t remaining;
+        uint32_t slice;
+        status_t status;
+
+        if (find_bytes(device->at_buffer, device->at_length, "CLOSED") !=
+            SIZE_MAX) {
+            device->health.tcp_connected = 0u;
+            device->health.last_error = ERR_IO;
+            device->at_length = 0u;
         }
-    }
-    if (find_bytes(device->at_buffer, device->at_length, "CLOSED") !=
-        SIZE_MAX) {
-        device->health.tcp_connected = 0u;
-        device->health.last_error = ERR_IO;
-        device->at_length = 0u;
-        if (device->tcp_length == 0u) {
+        retain_stream_marker(device, 1);
+        /* Buffered bytes remain readable after the peer closes. */
+        if (device->tcp_length != 0u) {
+            break;
+        }
+        if (device->health.tcp_connected == 0u) {
             return ERR_IO;
         }
-    }
-    if (device->tcp_length == 0u) {
-        return ERR_TIMEOUT;
+        remaining = remaining_ms(device, start, timeout_ms, elapsed);
+        if (remaining == 0u) {
+            return ERR_TIMEOUT;
+        }
+        slice = remaining < ESP8266_WAIT_SLICE_MS
+            ? remaining : ESP8266_WAIT_SLICE_MS;
+        status = ingest_serial(device, slice);
+        elapsed += status == ERR_TIMEOUT ? slice : 1u;
+        if (status != SYS_OK && status != ERR_TIMEOUT) {
+            return status;
+        }
     }
     *length = device->tcp_length < capacity ? device->tcp_length : capacity;
     memcpy(data, device->tcp_buffer, *length);
@@ -410,6 +505,9 @@ status_t esp8266_tcp_close(esp8266_t *device)
     if (device == 0) {
         return ERR_INVALID_ARG;
     }
+    device->tcp_length = 0u;
+    device->ipd_remaining = 0u;
+    device->at_length = 0u;
     if (device->health.tcp_connected == 0u) {
         return SYS_OK;
     }
@@ -424,7 +522,7 @@ status_t esp8266_suspend(esp8266_t *device)
 {
     status_t status;
 
-    if (device == 0 || device->health.initialized == 0u) {
+    if (device == 0) {
         return ERR_DEVICE_NOT_READY;
     }
     (void)esp8266_tcp_close(device);
@@ -513,5 +611,176 @@ const network_transport_ops_t *esp8266_network_transport_ops(void)
         transport_resume
     };
 
+    return &ops;
+}
+
+/* Cooperative connection commands: each poll reads at most one 256-byte chunk
+ * and waits at most 10 ms. Join/TCP deadlines span polls rather than task waits. */
+static status_t command_step(esp8266_t *device, const char *command,
+    const char *success, const char *alternate, uint32_t now_ms,
+    uint32_t timeout_ms)
+{
+    status_t status;
+    size_t index;
+    if (device->command_pending == 0u) {
+        device->at_length = 0u;
+        status = write_serial(device, (const uint8_t *)command, strlen(command), 100u);
+        if (status != SYS_OK) {
+            return status;
+        }
+        device->command_deadline_ms = now_ms + timeout_ms;
+        device->command_pending = 1u;
+        device->health.commands++;
+        return ERR_IN_PROGRESS;
+    }
+    if ((int32_t)(now_ms - device->command_deadline_ms) >= 0) {
+        device->command_pending = 0u;
+        return ERR_TIMEOUT;
+    }
+    status = ingest_serial(device, 10u);
+    if (status != SYS_OK && status != ERR_TIMEOUT) {
+        device->command_pending = 0u;
+        return status;
+    }
+    index = find_response(device->at_buffer, device->at_length, success);
+    if (index != SIZE_MAX) {
+        consume_token(device, index, success);
+        device->command_pending = 0u;
+        return SYS_OK;
+    }
+    if (alternate != 0) {
+        index = find_response(device->at_buffer, device->at_length, alternate);
+        if (index != SIZE_MAX) {
+            consume_token(device, index, alternate);
+            device->command_pending = 0u;
+            return SYS_OK;
+        }
+    }
+    if (find_bytes(device->at_buffer, device->at_length, "ERROR") != SIZE_MAX ||
+        find_bytes(device->at_buffer, device->at_length, "FAIL") != SIZE_MAX) {
+        device->command_pending = 0u;
+        return ERR_WIFI;
+    }
+    if ((int32_t)(now_ms - device->command_deadline_ms) >= 0) {
+        device->command_pending = 0u;
+        return ERR_TIMEOUT;
+    }
+    return ERR_IN_PROGRESS;
+}
+
+static status_t module_init_step(void *opaque, uint32_t now_ms)
+{
+    esp8266_t *device = opaque;
+    const char *command = 0;
+    const char *success = "OK";
+    char join[128];
+    uint32_t timeout = device->command_timeout_ms;
+    status_t status;
+    if (device->health.initialized != 0u) {
+        return SYS_OK;
+    }
+    if (device->init_phase == 0u) {
+        status = device->serial_ops->init(device->serial_context);
+        if (status != SYS_OK) {
+            return status;
+        }
+        device->init_phase = device->needs_reset != 0u ? 1u : 2u;
+    }
+    switch (device->init_phase) {
+    case 1u: command = "AT+RST\r\n"; success = "ready"; timeout = 3000u; break;
+    case 2u: command = "AT\r\n"; break;
+    case 3u: command = "ATE0\r\n"; break;
+    case 4u: command = "AT+CWMODE=1\r\n"; break;
+    case 5u:
+        if (snprintf(join, sizeof(join), "AT+CWJAP=\"%s\",\"%s\"\r\n",
+                     device->ssid, device->password) >= (int)sizeof(join)) {
+            return ERR_NO_MEMORY;
+        }
+        command = join;
+        timeout = device->join_timeout_ms;
+        break;
+    case 6u: command = "AT+CIPMUX=0\r\n"; break;
+    case 7u: command = "AT+SLEEP=2\r\n"; break;
+    default: return ERR_PROTOCOL;
+    }
+    status = command_step(device, command, success,
+        device->init_phase == 4u ? "no change" : 0, now_ms, timeout);
+    if (status == ERR_IN_PROGRESS) {
+        return status;
+    }
+    if (status != SYS_OK && device->init_phase != 7u) {
+        device->health.last_error = status;
+        device->needs_reset = 1u;
+        device->init_phase = 0u;
+        return status;
+    }
+    if (device->init_phase == 1u) {
+        device->needs_reset = 0u;
+    } else if (device->init_phase == 5u) {
+        device->health.wifi_joined = 1u;
+    } else if (device->init_phase == 7u) {
+        device->health.modem_sleep_enabled = status == SYS_OK ? 1u : 0u;
+    }
+    device->init_phase++;
+    if (device->init_phase == 8u ||
+        (device->init_phase == 7u && device->enable_modem_sleep == 0u)) {
+        device->init_phase = 0u;
+        device->health.initialized = 1u;
+        device->health.last_error = SYS_OK;
+        return SYS_OK;
+    }
+    return ERR_IN_PROGRESS;
+}
+
+static status_t tcp_connect_step(void *opaque, const char *host,
+                                  uint16_t port, uint32_t now_ms)
+{
+    esp8266_t *device = opaque;
+    char command[128];
+    status_t status;
+    if (host == 0 || port == 0u || device->health.initialized == 0u) {
+        return ERR_INVALID_ARG;
+    }
+    if (device->command_pending == 0u) {
+        device->tcp_length = 0u;
+        device->ipd_remaining = 0u;
+    }
+    if (snprintf(command, sizeof(command), "AT+CIPSTART=\"TCP\",\"%s\",%u\r\n",
+                 host, (unsigned int)port) >= (int)sizeof(command)) {
+        return ERR_NO_MEMORY;
+    }
+    status = command_step(device, command, "CONNECT\r\n", "ALREADY CONNECTED\r\n",
+                           now_ms, device->join_timeout_ms);
+    if (status == SYS_OK) {
+        device->health.tcp_connected = 1u;
+        device->health.tcp_connects++;
+    } else if (status != ERR_IN_PROGRESS) {
+        device->needs_reset = 1u;
+    }
+    device->health.last_error = status;
+    return status;
+}
+
+static void cancel_connect(void *opaque)
+{
+    esp8266_t *device = opaque;
+    if (device->command_pending != 0u || device->init_phase != 0u) {
+        device->needs_reset = 1u;
+        device->command_pending = 0u;
+        device->init_phase = 0u;
+        device->health.initialized = 0u;
+        device->health.wifi_joined = 0u;
+        device->health.tcp_connected = 0u;
+        device->at_length = 0u;
+        device->tcp_length = 0u;
+        device->ipd_remaining = 0u;
+    }
+}
+
+const network_connect_step_ops_t *esp8266_connect_step_ops(void)
+{
+    static const network_connect_step_ops_t ops = {
+        module_init_step, tcp_connect_step, cancel_connect
+    };
     return &ops;
 }

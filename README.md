@@ -13,6 +13,7 @@
 2. `docs/architecture_audit_and_delivery.md`：最终架构审计、证据和剩余风险。
 3. `docs/ota_update_design_and_validation.md`：A/B OTA 安装、trial 与回滚链路。
 4. `docs/reliability_power_board_validation.md`：可靠性、低功耗和上板验收清单。
+5. `docs/runtime_architecture_refactor_2026-10-02.md`：RTOS 模块拆分、网络连接、配置事务、请求生命周期及最新验证记录。
 
 ## 工程结构
 
@@ -103,7 +104,7 @@ VS Code 默认构建任务为 `F407: Build All`。`F407 App A - ST-LINK` 与 `F4
 - 已接入对象化 Watchdog、Supervisor、Power Manager 和 boot confirmation：八个关键任务全部健康时才刷新 IWDG，trial 槽连续健康 2 秒后才事务提交 `boot_ok`；Power Lock 已覆盖 OTA、Flash、网络、Modbus、CAN 和活动告警。
 - Storage Task 在 Eco 模式连续空闲 5 s、无 OTA 活动且无待处理成员时自动让 W25Q128 进入 Deep Power-down；任何日志、告警、配置或 OTA 请求都先由同一任务唤醒 Flash，再执行业务。休眠/唤醒幂等、计数和失败状态已通过 Host 测试。
 - 已实现 HAL-free `deep_power_controller_t` 和六任务 Event Group 静默屏障：Acquisition、Modbus、CAN、Network、Storage、UI 只在各自任务内 Suspend/Resume；控制器继续检查确认令牌、全部 ACK、Power Lock 和 IWDG 窗口。F407 的 STOP/Standby capability 默认关闭，`power stop/standby` 返回 `ERR_UNSUPPORTED`，禁止在 RTC/EXTI 和时钟恢复尚未上板确认时强行进入深睡。
-- CLI 已增加 Stack/Queue 高水位、DWT/FreeRTOS CPU 千分比、100 ms 采集周期抖动/释放超期、应用临界区最长周期、Supervisor、Power Lock、IWDG 剩余窗口和 Slot/Fault/OTA 诊断。Host 11/11 与 ARM Debug/Release 门禁通过，真实喂狗、trial 回滚、周期测量和功耗仍为 Board Unverified；详细验收步骤见 `docs/reliability_power_board_validation.md` 和 `docs/deep_power_design_and_validation.md`。
+- CLI 已增加 Stack/Queue 高水位、DWT/FreeRTOS CPU 千分比、100 ms 采集周期抖动/释放超期、应用临界区最长周期、Supervisor、Power Lock、IWDG 剩余窗口和 Slot/Fault/OTA 诊断。Host 13/13 与 ARM Debug/Release 门禁通过，真实喂狗、trial 回滚、周期测量和功耗仍为 Board Unverified；详细验收步骤见 `docs/reliability_power_board_validation.md` 和 `docs/deep_power_design_and_validation.md`。
 - 已接入 `fault_recorder_t`、RTC 备份域异常 cookie、复位后 `fault show/clear` 和 Debug-only HardFault/Watchdog 注入；Storage Task 会把有效 cookie 以双层 CRC 记录追加到 W25Q128 Crash 环形区，并按 sequence + CRC 去重。跨扇区重挂载与损坏回退已通过 Host 测试，真实掉电保持仍为 Board Unverified；该故障归档功能不占用 OTA staging/metadata 分区。
 - 在线 OTA 的解析、状态机、Flash 顺序写约束、打包工具和目标构建为 Host Verified + ARM Build Verified；ESP8266 实际 HTTP 下载、W25Q128 staging、显式 apply 后重启安装、trial/rollback 仍保持 Board Unverified。
 - 所有实机行为，包括 W25Q128 JEDEC ID、RS485 DMA/IDLE 波形、CAN 收发与 bus-off、A/B OTA 和回滚，目前均保持 Board Unverified。

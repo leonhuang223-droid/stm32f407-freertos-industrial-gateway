@@ -203,6 +203,57 @@ static int test_alarm_relay_loop(void)
     return 0;
 }
 
+static int test_alarm_consecutive_recovery(void)
+{
+    fake_relay_port_t port = { 0 };
+    relay_config_t relay_config = { 1u, RELAY_DEENERGIZED };
+    relay_t relay;
+    alarm_subsystem_t alarm;
+    gateway_runtime_config_t config = default_config();
+    gateway_alarm_event_t events[ALARM_MAX_EVENTS_PER_MEASUREMENT];
+    const int32_t values[] = { 1100, 900, 950, 900, 900 };
+    size_t count;
+    size_t index;
+    config.rules[0].assert_samples = 1u;
+    config.rules[0].recover_samples = 2u;
+    EXPECT_STATUS(SYS_OK, relay_construct(&relay, &fake_relay_ops, &port, &relay_config));
+    EXPECT_STATUS(SYS_OK, alarm_subsystem_construct(&alarm, &relay, &config));
+    EXPECT_STATUS(SYS_OK, alarm_subsystem_start(&alarm));
+    for (index = 0u; index < 5u; ++index) {
+        gateway_measurement_t sample = measurement((uint32_t)index, values[index], GATEWAY_QUALITY_GOOD);
+        EXPECT_STATUS(SYS_OK, alarm_subsystem_process(&alarm, &sample, events,
+            ALARM_MAX_EVENTS_PER_MEASUREMENT, &count));
+        EXPECT_TRUE(alarm_subsystem_active_count(&alarm) == (index < 4u ? 1u : 0u));
+    }
+    /* Invalid quality interrupts recovery and assertion streaks. */
+    {
+        const int32_t samples[] = { 1100, 900, 900, 900, 900 };
+        for (index = 0u; index < 5u; ++index) {
+            gateway_measurement_t sample = measurement((uint32_t)index, samples[index],
+                index == 2u ? GATEWAY_QUALITY_COMM_ERROR : GATEWAY_QUALITY_GOOD);
+            EXPECT_STATUS(SYS_OK, alarm_subsystem_process(&alarm, &sample, events,
+                ALARM_MAX_EVENTS_PER_MEASUREMENT, &count));
+            if (index == 3u) {
+                EXPECT_TRUE(alarm.rules[0].high.state == ALARM_STATE_RECOVER_PENDING);
+            }
+            if (index == 4u) {
+                EXPECT_TRUE(alarm.rules[0].high.state == ALARM_STATE_NORMAL);
+            }
+        }
+    }
+    config.rules[0].assert_samples = 2u;
+    EXPECT_STATUS(SYS_OK, alarm_subsystem_reconfigure(&alarm, &config));
+    for (index = 0u; index < 4u; ++index) {
+        gateway_measurement_t sample = measurement((uint32_t)index, 1100,
+            index == 1u ? GATEWAY_QUALITY_COMM_ERROR : GATEWAY_QUALITY_GOOD);
+        EXPECT_STATUS(SYS_OK, alarm_subsystem_process(&alarm, &sample, events,
+            ALARM_MAX_EVENTS_PER_MEASUREMENT, &count));
+        EXPECT_TRUE(alarm.rules[0].high.state == (index == 3u ? ALARM_STATE_ACTIVE :
+            (index == 1u ? ALARM_STATE_NORMAL : ALARM_STATE_PENDING)));
+    }
+    return 0;
+}
+
 typedef struct {
     uint8_t bytes[8192];
     uint32_t jedec_id;
@@ -670,7 +721,7 @@ static int test_storage_persistence(void)
 
 int main(void)
 {
-    if (test_alarm_relay_loop() != 0 ||
+    if (test_alarm_relay_loop() != 0 || test_alarm_consecutive_recovery() != 0 ||
         test_w25q128_commands() != 0 ||
         test_control_startup_gate() != 0 ||
         test_storage_persistence() != 0) {

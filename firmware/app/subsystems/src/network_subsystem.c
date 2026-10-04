@@ -70,6 +70,7 @@ static void set_offline(network_subsystem_t *subsystem, uint32_t now_ms,
                 ? subsystem->reconnect_max_ms : doubled;
     }
     subsystem->mqtt_rx_length = 0u;
+    subsystem->connect_phase = 0u;
     subsystem->ping_outstanding = 0u;
     if (subsystem->inflight_active != 0u) {
         subsystem->inflight_duplicate = 1u;
@@ -133,6 +134,104 @@ static status_t receive_connack(network_subsystem_t *subsystem)
     return ERR_TIMEOUT;
 }
 
+static status_t connect_mqtt_step(network_subsystem_t *subsystem,
+                                  uint32_t now_ms)
+{
+    status_t status;
+    subsystem->health.state = NETWORK_STATE_CONNECTING;
+    if (subsystem->connect_phase == 0u) {
+        subsystem->health.connect_attempts++;
+        subsystem->connect_phase = 1u;
+    }
+    switch (subsystem->connect_phase) {
+    case 1u:
+        status = subsystem->transport->initialized != 0u ? SYS_OK :
+            network_transport_init_step(subsystem->transport, now_ms);
+        if (status == SYS_OK) {
+            subsystem->connect_phase = 2u;
+            return ERR_IN_PROGRESS;
+        }
+        break;
+    case 2u:
+        status = network_transport_connect_step(subsystem->transport,
+            subsystem->broker_host, subsystem->broker_port, now_ms);
+        if (status == SYS_OK) {
+            subsystem->connect_phase = 3u;
+            return ERR_IN_PROGRESS;
+        }
+        break;
+    case 3u:
+        {
+            mqtt_connect_options_t options;
+            uint8_t packet[NETWORK_MQTT_PACKET_MAX];
+            size_t length = 0u;
+            memset(&options, 0, sizeof(options));
+            options.client_id = subsystem->client_id;
+            options.username = subsystem->username[0] != '\0' ? subsystem->username : 0;
+            options.password = subsystem->password[0] != '\0' ? subsystem->password : 0;
+            options.keep_alive_seconds = subsystem->keep_alive_seconds;
+            options.clean_session = 1u;
+            status = mqtt_encode_connect(&options, packet, sizeof(packet), &length);
+            if (status == SYS_OK) {
+                status = network_transport_send(subsystem->transport, packet, length);
+            }
+            if (status == SYS_OK) {
+                subsystem->mqtt_rx_length = 0u;
+                subsystem->connect_deadline_ms = now_ms + subsystem->connect_timeout_ms;
+                subsystem->connect_phase = 4u;
+                return ERR_IN_PROGRESS;
+            }
+        }
+        break;
+    case 4u:
+        {
+            uint8_t incoming[128];
+            size_t length = 0u;
+            size_t consumed = 0u;
+            mqtt_packet_view_t packet;
+            status = network_transport_receive(subsystem->transport,
+                incoming, sizeof(incoming), &length, 10u);
+            if (status == SYS_OK) {
+                status = append_mqtt_rx(subsystem, incoming, length);
+                if (status == SYS_OK) {
+                    status = mqtt_decode_packet(subsystem->mqtt_rx,
+                        subsystem->mqtt_rx_length, &packet, &consumed);
+                }
+                if (status == SYS_OK) {
+                    if (packet.type != MQTT_PACKET_CONNACK || packet.return_code != 0u) {
+                        status = ERR_PROTOCOL;
+                        break;
+                    }
+                    memmove(subsystem->mqtt_rx, subsystem->mqtt_rx + consumed,
+                            subsystem->mqtt_rx_length - consumed);
+                    subsystem->mqtt_rx_length -= consumed;
+                    subsystem->connect_phase = 0u;
+                    subsystem->health.state = NETWORK_STATE_MQTT_READY;
+                    subsystem->health.mqtt_ready = 1u;
+                    subsystem->health.successful_connections++;
+                    subsystem->health.last_error = SYS_OK;
+                    subsystem->health.retry_due_ms = 0u;
+                    subsystem->current_reconnect_ms = subsystem->reconnect_initial_ms;
+                    subsystem->last_activity_ms = now_ms;
+                    return SYS_OK;
+                }
+            }
+            if (status == ERR_TIMEOUT || status == ERR_DEVICE_NOT_READY) {
+                if (!time_reached(now_ms, subsystem->connect_deadline_ms)) {
+                    return ERR_IN_PROGRESS;
+                }
+                status = ERR_TIMEOUT;
+            }
+        }
+        break;
+    default: status = ERR_PROTOCOL; break;
+    }
+    if (status != ERR_IN_PROGRESS) {
+        set_offline(subsystem, now_ms, status);
+    }
+    return status;
+}
+
 static status_t connect_mqtt(network_subsystem_t *subsystem,
                              uint32_t now_ms)
 {
@@ -141,6 +240,9 @@ static status_t connect_mqtt(network_subsystem_t *subsystem,
     size_t packet_length = 0u;
     status_t status;
 
+    if (subsystem->transport->connect_steps != 0) {
+        return connect_mqtt_step(subsystem, now_ms);
+    }
     subsystem->health.connect_attempts++;
     if (subsystem->transport->initialized == 0u) {
         status = network_transport_init(subsystem->transport);
@@ -473,7 +575,9 @@ status_t network_subsystem_start(network_subsystem_t *subsystem,
     }
     subsystem->health.state = NETWORK_STATE_OFFLINE;
     subsystem->health.retry_due_ms = now_ms;
-    return connect_mqtt(subsystem, now_ms);
+    /* Start means accepted; hardware connection advances in process(). */
+    return subsystem->transport->connect_steps != 0
+        ? SYS_OK : connect_mqtt(subsystem, now_ms);
 }
 
 status_t network_subsystem_submit(network_subsystem_t *subsystem,
@@ -582,8 +686,8 @@ status_t network_subsystem_suspend(network_subsystem_t *subsystem,
         mqtt_encode_disconnect(packet, sizeof(packet), &length) == SYS_OK) {
         (void)network_transport_send(subsystem->transport, packet, length);
     }
-    status = subsystem->transport->initialized != 0u
-        ? network_transport_suspend(subsystem->transport) : SYS_OK;
+    status = network_transport_suspend(subsystem->transport);
+    subsystem->connect_phase = 0u;
     if (status == SYS_OK) {
         subsystem->health.state = NETWORK_STATE_STOPPED;
         subsystem->health.mqtt_ready = 0u;
@@ -609,7 +713,8 @@ status_t network_subsystem_resume(network_subsystem_t *subsystem,
     if (subsystem->health.state != NETWORK_STATE_STOPPED) {
         return SYS_OK;
     }
-    status = network_transport_resume(subsystem->transport);
+    status = subsystem->transport->connect_steps != 0
+        ? SYS_OK : network_transport_resume(subsystem->transport);
     if (status == SYS_OK) {
         subsystem->health.state = NETWORK_STATE_OFFLINE;
         subsystem->health.retry_due_ms = now_ms;
@@ -636,6 +741,8 @@ status_t network_subsystem_acquire_ota_lease(network_subsystem_t *subsystem,
         mqtt_encode_disconnect(packet, sizeof(packet), &length) == SYS_OK) {
         (void)network_transport_send(subsystem->transport, packet, length);
     }
+    network_transport_cancel_connect(subsystem->transport);
+    subsystem->connect_phase = 0u;
     (void)network_transport_close(subsystem->transport);
     subsystem->health.state = NETWORK_STATE_OTA_LEASED;
     subsystem->health.mqtt_ready = 0u;

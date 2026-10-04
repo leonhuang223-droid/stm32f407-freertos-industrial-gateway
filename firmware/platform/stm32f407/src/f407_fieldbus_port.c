@@ -224,6 +224,8 @@ static status_t f407_can_receive(void *context, can_frame_t *frame)
         return ERR_INVALID_ARG;
     }
     if (HAL_CAN_GetRxFifoFillLevel(port->handle, CAN_RX_FIFO0) == 0u) {
+        (void)HAL_CAN_ActivateNotification(port->handle,
+                                          CAN_IT_RX_FIFO0_MSG_PENDING);
         return ERR_DEVICE_NOT_READY;
     }
     memset(frame, 0, sizeof(*frame));
@@ -236,6 +238,10 @@ static status_t f407_can_receive(void *context, can_frame_t *frame)
     frame->is_remote = header.RTR == CAN_RTR_REMOTE ? 1u : 0u;
     frame->id = frame->is_extended != 0u ? header.ExtId : header.StdId;
     frame->dlc = (uint8_t)header.DLC;
+    if (HAL_CAN_GetRxFifoFillLevel(port->handle, CAN_RX_FIFO0) == 0u) {
+        (void)HAL_CAN_ActivateNotification(port->handle,
+                                          CAN_IT_RX_FIFO0_MSG_PENDING);
+    }
     return SYS_OK;
 }
 
@@ -247,24 +253,23 @@ static status_t f407_can_wait_event(void *context, uint32_t timeout_ms,
     if (port == 0 || event_bits == 0) {
         return ERR_INVALID_ARG;
     }
+    port->owner_task = xTaskGetCurrentTaskHandle();
     if (HAL_CAN_GetRxFifoFillLevel(port->handle, CAN_RX_FIFO0) != 0u) {
         *event_bits = CAN_BUS_EVENT_RX;
         return SYS_OK;
     }
     clear_current_task_notification();
-    port->owner_task = xTaskGetCurrentTaskHandle();
+    (void)HAL_CAN_ActivateNotification(port->handle,
+                                      CAN_IT_RX_FIFO0_MSG_PENDING);
     if (HAL_CAN_GetRxFifoFillLevel(port->handle, CAN_RX_FIFO0) != 0u) {
-        port->owner_task = 0;
         *event_bits = CAN_BUS_EVENT_RX;
         return SYS_OK;
     }
     if (xTaskNotifyWait(0u, UINT32_MAX, event_bits,
                         pdMS_TO_TICKS(timeout_ms)) != pdTRUE) {
-        port->owner_task = 0;
         *event_bits = CAN_BUS_EVENT_NONE;
         return ERR_TIMEOUT;
     }
-    port->owner_task = 0;
     return SYS_OK;
 }
 
@@ -360,6 +365,10 @@ void f407_fieldbus_uart_error(UART_HandleTypeDef *handle)
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *handle)
 {
     if (handle == can_port.handle) {
+        /* FMP is level-triggered. Leave FIFO ownership to CanTask and mask
+         * the source until that task drains it, including before scheduling. */
+        (void)HAL_CAN_DeactivateNotification(handle,
+                                            CAN_IT_RX_FIFO0_MSG_PENDING);
         notify_task_from_isr(can_port.owner_task, CAN_BUS_EVENT_RX);
     }
 }

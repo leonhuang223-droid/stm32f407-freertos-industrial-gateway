@@ -18,7 +18,15 @@ typedef struct {
 } network_transport_ops_t;
 
 typedef struct {
+    status_t (*init_step)(void *context, uint32_t now_ms);
+    status_t (*connect_step)(void *context, const char *host,
+                             uint16_t port, uint32_t now_ms);
+    void (*cancel)(void *context);
+} network_connect_step_ops_t;
+
+typedef struct {
     const network_transport_ops_t *ops;
+    const network_connect_step_ops_t *connect_steps;
     void *context;
     uint8_t initialized;
     uint8_t connected;
@@ -28,6 +36,10 @@ status_t network_transport_construct(network_transport_t *transport,
                                      const network_transport_ops_t *ops,
                                      void *context);
 status_t network_transport_init(network_transport_t *transport);
+status_t network_transport_init_step(network_transport_t *transport, uint32_t now_ms);
+status_t network_transport_connect_step(network_transport_t *transport,
+    const char *host, uint16_t port, uint32_t now_ms);
+void network_transport_cancel_connect(network_transport_t *transport);
 status_t network_transport_connect(network_transport_t *transport,
                                     const char *host, uint16_t port);
 status_t network_transport_send(network_transport_t *transport,

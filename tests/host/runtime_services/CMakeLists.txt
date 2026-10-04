@@ -1,0 +1,4 @@
+add_executable(test_runtime_services test_runtime_services.c)
+target_link_libraries(test_runtime_services PRIVATE gateway_architecture)
+target_compile_options(test_runtime_services PRIVATE -Wall -Wextra -Werror)
+add_test(NAME runtime_services.host COMMAND test_runtime_services)

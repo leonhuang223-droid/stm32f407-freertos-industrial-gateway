@@ -185,7 +185,7 @@ static status_t update_condition(
         }
         break;
     case ALARM_STATE_RECOVER_PENDING:
-        if (input->condition_active) {
+        if (!input->recovery_active) {
             runtime->state = ALARM_STATE_ACTIVE;
             runtime->recover_count = 0u;
         } else if (input->recovery_active &&
@@ -337,6 +337,19 @@ status_t alarm_subsystem_process(
             if (first_error == SYS_OK && status != SYS_OK) {
                 first_error = status;
             }
+        }
+    } else {
+        /* An invalid sample interrupts consecutive threshold observations,
+         * but must never clear an already asserted alarm. */
+        alarm_condition_runtime_t *conditions[] = { &rule->high, &rule->low };
+        for (i = 0u; i < 2u; ++i) {
+            if (conditions[i]->state == ALARM_STATE_PENDING) {
+                conditions[i]->state = ALARM_STATE_NORMAL;
+            } else if (conditions[i]->state == ALARM_STATE_RECOVER_PENDING) {
+                conditions[i]->state = ALARM_STATE_ACTIVE;
+            }
+            conditions[i]->assert_count = 0u;
+            conditions[i]->recover_count = 0u;
         }
     }
     subsystem->health.active_alarms = count_active(subsystem);

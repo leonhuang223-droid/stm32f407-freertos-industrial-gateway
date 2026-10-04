@@ -20,7 +20,8 @@ typedef enum {
     NETWORK_STATE_STOPPED = 0,
     NETWORK_STATE_OFFLINE,
     NETWORK_STATE_MQTT_READY,
-    NETWORK_STATE_OTA_LEASED
+    NETWORK_STATE_OTA_LEASED,
+    NETWORK_STATE_CONNECTING
 } network_state_t;
 
 typedef struct {
@@ -95,6 +96,8 @@ typedef struct {
     uint32_t last_activity_ms;
     uint32_t ping_deadline_ms;
     uint8_t ping_outstanding;
+    uint8_t connect_phase;
+    uint32_t connect_deadline_ms;
     network_health_t health;
 } network_subsystem_t;
 

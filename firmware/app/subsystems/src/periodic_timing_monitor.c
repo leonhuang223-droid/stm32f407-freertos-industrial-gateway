@@ -3,9 +3,9 @@
 #include <limits.h>
 #include <string.h>
 
-status_t periodic_timing_monitor_construct(
-    periodic_timing_monitor_t *monitor, uint32_t expected_period_ms,
-    uint32_t release_tolerance_ms)
+status_t periodic_timing_monitor_construct(periodic_timing_monitor_t *monitor,
+                                           uint32_t expected_period_ms,
+                                           uint32_t release_tolerance_ms)
 {
     if (monitor == 0 || expected_period_ms == 0u ||
         expected_period_ms > (uint32_t)INT32_MAX ||
@@ -19,9 +19,9 @@ status_t periodic_timing_monitor_construct(
     return SYS_OK;
 }
 
-status_t periodic_timing_monitor_note(
-    periodic_timing_monitor_t *monitor, uint32_t actual_release_ms,
-    uint32_t scheduled_release_ms)
+status_t periodic_timing_monitor_note(periodic_timing_monitor_t *monitor,
+                                      uint32_t actual_release_ms,
+                                      uint32_t scheduled_release_ms)
 {
     int32_t release_lateness;
 
@@ -37,8 +37,8 @@ status_t periodic_timing_monitor_note(
 
     if (monitor->previous_release_valid != 0u) {
         uint32_t interval = actual_release_ms - monitor->previous_release_ms;
-        int32_t jitter = (int32_t)(interval -
-                                   monitor->stats.expected_period_ms);
+        int32_t jitter =
+            (int32_t)(interval - monitor->stats.expected_period_ms);
 
         monitor->stats.last_interval_ms = interval;
         monitor->stats.last_jitter_ms = jitter;
@@ -65,9 +65,8 @@ status_t periodic_timing_monitor_note(
     return SYS_OK;
 }
 
-status_t periodic_timing_monitor_get(
-    const periodic_timing_monitor_t *monitor,
-    periodic_timing_stats_t *stats)
+status_t periodic_timing_monitor_get(const periodic_timing_monitor_t *monitor,
+                                     periodic_timing_stats_t *stats)
 {
     if (monitor == 0 || stats == 0 || monitor->initialized == 0u) {
         return ERR_DEVICE_NOT_READY;

@@ -56,7 +56,8 @@ void supervisor_subsystem_latch_fault(supervisor_subsystem_t *supervisor,
                                       status_t error);
 uint8_t supervisor_subsystem_boot_confirm_ready(
     const supervisor_subsystem_t *supervisor, uint32_t now_ms);
-status_t supervisor_subsystem_get_health(
-    const supervisor_subsystem_t *supervisor, supervisor_health_t *health);
+status_t
+supervisor_subsystem_get_health(const supervisor_subsystem_t *supervisor,
+                                supervisor_health_t *health);
 
 #endif

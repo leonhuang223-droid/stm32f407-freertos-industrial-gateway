@@ -51,8 +51,7 @@ static status_t watchdog_start(void *context, uint32_t timeout_ms)
     if (reliability == 0 || timeout_ms < 16u) {
         return ERR_INVALID_ARG;
     }
-    reload = (timeout_ms * (F407_IWDG_LSI_HZ / 1000u)) /
-             F407_IWDG_PRESCALER;
+    reload = (timeout_ms * (F407_IWDG_LSI_HZ / 1000u)) / F407_IWDG_PRESCALER;
     if (reload == 0u || reload - 1u > F407_IWDG_RELOAD_MAX) {
         return ERR_INVALID_ARG;
     }
@@ -105,14 +104,12 @@ static uint32_t watchdog_remaining_ms(const void *context)
     }
     elapsed = monotonic_ms() - reliability->watchdog_last_refresh_ms;
     return elapsed < reliability->watchdog_timeout_ms
-        ? reliability->watchdog_timeout_ms - elapsed : 0u;
+               ? reliability->watchdog_timeout_ms - elapsed
+               : 0u;
 }
 
 static const watchdog_device_ops_t watchdog_ops = {
-    watchdog_start,
-    watchdog_refresh,
-    watchdog_remaining_ms
-};
+    watchdog_start, watchdog_refresh, watchdog_remaining_ms};
 
 static status_t deep_power_enter_stop(void *context,
                                       uint32_t requested_ms,
@@ -139,9 +136,7 @@ static status_t deep_power_enter_standby(void *context)
 }
 
 static const deep_power_platform_ops_t deep_power_ops = {
-    deep_power_enter_stop,
-    deep_power_enter_standby
-};
+    deep_power_enter_stop, deep_power_enter_standby};
 
 static status_t fault_record_load(void *context, fault_record_t *record)
 {
@@ -184,10 +179,7 @@ static status_t fault_inject(void *context, fault_injection_t injection)
 }
 
 static const fault_recorder_ops_t fault_recorder_ops = {
-    fault_record_load,
-    fault_record_clear,
-    fault_inject
-};
+    fault_record_load, fault_record_clear, fault_inject};
 
 static status_t flash_unlock(void *context)
 {
@@ -203,7 +195,7 @@ static status_t flash_lock(void *context)
 
 static status_t flash_erase_sector(void *context, uint8_t sector_index)
 {
-    FLASH_EraseInitTypeDef erase = { 0 };
+    FLASH_EraseInitTypeDef erase = {0};
     uint32_t sector_error = UINT32_MAX;
 
     (void)context;
@@ -216,20 +208,23 @@ static status_t flash_erase_sector(void *context, uint8_t sector_index)
     erase.NbSectors = 1u;
     erase.VoltageRange = FLASH_VOLTAGE_RANGE_3;
     return HAL_FLASHEx_Erase(&erase, &sector_error) == HAL_OK &&
-           sector_error == UINT32_MAX ? SYS_OK : ERR_FLASH_ERASE;
+                   sector_error == UINT32_MAX
+               ? SYS_OK
+               : ERR_FLASH_ERASE;
 }
 
-static status_t flash_program_word(void *context, uint32_t address,
-                                   uint32_t value)
+static status_t
+flash_program_word(void *context, uint32_t address, uint32_t value)
 {
     (void)context;
-    return HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, address,
-                             (uint64_t)value) == HAL_OK
-        ? SYS_OK : ERR_FLASH_WRITE;
+    return HAL_FLASH_Program(
+               FLASH_TYPEPROGRAM_WORD, address, (uint64_t)value) == HAL_OK
+               ? SYS_OK
+               : ERR_FLASH_WRITE;
 }
 
-static status_t flash_read(void *context, uint32_t address,
-                           uint8_t *buffer, size_t length)
+static status_t
+flash_read(void *context, uint32_t address, uint8_t *buffer, size_t length)
 {
     (void)context;
     if (buffer == 0 || length == 0u || address < INTERNAL_FLASH_BASE ||
@@ -241,8 +236,8 @@ static status_t flash_read(void *context, uint32_t address,
     return SYS_OK;
 }
 
-static status_t metadata_read(void *context, app_slot_t copy_slot,
-                              boot_metadata_t *metadata)
+static status_t
+metadata_read(void *context, app_slot_t copy_slot, boot_metadata_t *metadata)
 {
     f407_reliability_context_t *reliability = context;
     const partition_t *partition = partition_get_metadata(copy_slot);
@@ -250,11 +245,14 @@ static status_t metadata_read(void *context, app_slot_t copy_slot,
     if (reliability == 0 || partition == 0 || metadata == 0) {
         return ERR_INVALID_ARG;
     }
-    return f407_flash_read(&reliability->flash, partition->start,
-                           (uint8_t *)metadata, sizeof(*metadata));
+    return f407_flash_read(&reliability->flash,
+                           partition->start,
+                           (uint8_t *)metadata,
+                           sizeof(*metadata));
 }
 
-static status_t metadata_write(void *context, app_slot_t copy_slot,
+static status_t metadata_write(void *context,
+                               app_slot_t copy_slot,
                                const boot_metadata_t *metadata)
 {
     f407_reliability_context_t *reliability = context;
@@ -274,9 +272,10 @@ static status_t metadata_write(void *context, app_slot_t copy_slot,
         status = f407_flash_erase_metadata(&reliability->flash, copy_slot);
     }
     if (status == SYS_OK) {
-        status = f407_flash_program_metadata(
-            &reliability->flash, copy_slot,
-            (const uint8_t *)metadata, sizeof(*metadata));
+        status = f407_flash_program_metadata(&reliability->flash,
+                                             copy_slot,
+                                             (const uint8_t *)metadata,
+                                             sizeof(*metadata));
     }
     if (status == SYS_OK) {
         status = metadata_read(reliability, copy_slot, &readback);
@@ -303,6 +302,56 @@ static app_slot_t running_slot(void)
 #endif
 }
 
+static void fill_reliability_config(app_reliability_config_t *config)
+{
+    memset(config, 0, sizeof(*config));
+    config->watchdog_ops = &watchdog_ops;
+    config->watchdog_context = &reliability_context;
+    config->fault_recorder_ops = &fault_recorder_ops;
+    config->fault_recorder_context = &reliability_context;
+    config->fault_injection_enabled =
+        F407_ENABLE_FAULT_INJECTION != 0 ? 1u : 0u;
+    config->watchdog_timeout_ms = F407_WATCHDOG_TIMEOUT_MS;
+    config->metadata_store.read = metadata_read;
+    config->metadata_store.write = metadata_write;
+    config->metadata_store.context = &reliability_context;
+    config->running_slot = running_slot();
+    config->power.auto_eco_after_ms = 30000u;
+    config->power.minimum_tickless_ms = 5u;
+    config->power.watchdog_margin_ms = 1500u;
+    config->power.lock_leak_timeout_ms = 600000u;
+    config->power.persistent_lock_mask =
+        (1UL << PM_LOCK_CAN_MONITORING) | (1UL << PM_LOCK_ALARM_ACTIVE);
+    config->deep_power_ops = &deep_power_ops;
+    config->deep_power_context = &reliability_context;
+    config->deep_power.stop_enabled = F407_STOP_PERIODIC_ENABLED;
+    config->deep_power.standby_enabled = F407_STANDBY_SHIPPING_ENABLED;
+    config->deep_power.minimum_stop_ms = F407_STOP_MINIMUM_MS;
+    config->deep_power.maximum_stop_ms = F407_STOP_MAXIMUM_MS;
+    config->deep_power.watchdog_margin_ms = 1500u;
+    config->deep_power.quiesce_timeout_ms = 5000u;
+    config->deep_power.required_quiesce_mask =
+        DEEP_POWER_PARTICIPANT_ACQUISITION | DEEP_POWER_PARTICIPANT_MODBUS |
+        DEEP_POWER_PARTICIPANT_CAN | DEEP_POWER_PARTICIPANT_NETWORK |
+        DEEP_POWER_PARTICIPANT_STORAGE | DEEP_POWER_PARTICIPANT_UI;
+    config->supervisor.task_count = GATEWAY_TASK_COUNT;
+    config->supervisor.critical_task_mask =
+        (1UL << GATEWAY_TASK_ACQUISITION) | (1UL << GATEWAY_TASK_DATA_HUB) |
+        (1UL << GATEWAY_TASK_MODBUS) | (1UL << GATEWAY_TASK_CAN) |
+        (1UL << GATEWAY_TASK_NETWORK) | (1UL << GATEWAY_TASK_OTA) |
+        (1UL << GATEWAY_TASK_STORAGE) | (1UL << GATEWAY_TASK_UI);
+    config->supervisor.task_timeout_ms[GATEWAY_TASK_ACQUISITION] = 500u;
+    config->supervisor.task_timeout_ms[GATEWAY_TASK_DATA_HUB] = 2000u;
+    config->supervisor.task_timeout_ms[GATEWAY_TASK_MODBUS] = 2500u;
+    config->supervisor.task_timeout_ms[GATEWAY_TASK_CAN] = 500u;
+    config->supervisor.task_timeout_ms[GATEWAY_TASK_NETWORK] = 2500u;
+    config->supervisor.task_timeout_ms[GATEWAY_TASK_OTA] = 6000u;
+    config->supervisor.task_timeout_ms[GATEWAY_TASK_STORAGE] = 4000u;
+    config->supervisor.task_timeout_ms[GATEWAY_TASK_UI] = 500u;
+    config->supervisor.startup_grace_ms = 3500u;
+    config->supervisor.boot_confirm_stable_ms = 2000u;
+}
+
 status_t f407_reliability_configure(app_context_t *context)
 {
     app_reliability_config_t config;
@@ -325,64 +374,11 @@ status_t f407_reliability_configure(app_context_t *context)
         return status;
     }
 
-    memset(&config, 0, sizeof(config));
-    config.watchdog_ops = &watchdog_ops;
-    config.watchdog_context = &reliability_context;
-    config.fault_recorder_ops = &fault_recorder_ops;
-    config.fault_recorder_context = &reliability_context;
-    config.fault_injection_enabled = F407_ENABLE_FAULT_INJECTION != 0
-        ? 1u : 0u;
-    config.watchdog_timeout_ms = F407_WATCHDOG_TIMEOUT_MS;
-    config.metadata_store.read = metadata_read;
-    config.metadata_store.write = metadata_write;
-    config.metadata_store.context = &reliability_context;
-    config.running_slot = running_slot();
-    config.power.auto_eco_after_ms = 30000u;
-    config.power.minimum_tickless_ms = 5u;
-    config.power.watchdog_margin_ms = 1500u;
-    config.power.lock_leak_timeout_ms = 600000u;
-    config.power.persistent_lock_mask =
-        (1UL << PM_LOCK_CAN_MONITORING) |
-        (1UL << PM_LOCK_ALARM_ACTIVE);
-    config.deep_power_ops = &deep_power_ops;
-    config.deep_power_context = &reliability_context;
-    config.deep_power.stop_enabled = F407_STOP_PERIODIC_ENABLED;
-    config.deep_power.standby_enabled = F407_STANDBY_SHIPPING_ENABLED;
-    config.deep_power.minimum_stop_ms = F407_STOP_MINIMUM_MS;
-    config.deep_power.maximum_stop_ms = F407_STOP_MAXIMUM_MS;
-    config.deep_power.watchdog_margin_ms = 1500u;
-    config.deep_power.required_quiesce_mask =
-        DEEP_POWER_PARTICIPANT_ACQUISITION |
-        DEEP_POWER_PARTICIPANT_MODBUS |
-        DEEP_POWER_PARTICIPANT_CAN |
-        DEEP_POWER_PARTICIPANT_NETWORK |
-        DEEP_POWER_PARTICIPANT_STORAGE |
-        DEEP_POWER_PARTICIPANT_UI;
-    config.supervisor.task_count = GATEWAY_TASK_COUNT;
-    config.supervisor.critical_task_mask =
-        (1UL << GATEWAY_TASK_ACQUISITION) |
-        (1UL << GATEWAY_TASK_DATA_HUB) |
-        (1UL << GATEWAY_TASK_MODBUS) |
-        (1UL << GATEWAY_TASK_CAN) |
-        (1UL << GATEWAY_TASK_NETWORK) |
-        (1UL << GATEWAY_TASK_OTA) |
-        (1UL << GATEWAY_TASK_STORAGE) |
-        (1UL << GATEWAY_TASK_UI);
-    config.supervisor.task_timeout_ms[GATEWAY_TASK_ACQUISITION] = 500u;
-    config.supervisor.task_timeout_ms[GATEWAY_TASK_DATA_HUB] = 2000u;
-    config.supervisor.task_timeout_ms[GATEWAY_TASK_MODBUS] = 2500u;
-    config.supervisor.task_timeout_ms[GATEWAY_TASK_CAN] = 500u;
-    config.supervisor.task_timeout_ms[GATEWAY_TASK_NETWORK] = 2500u;
-    config.supervisor.task_timeout_ms[GATEWAY_TASK_OTA] = 6000u;
-    config.supervisor.task_timeout_ms[GATEWAY_TASK_STORAGE] = 4000u;
-    config.supervisor.task_timeout_ms[GATEWAY_TASK_UI] = 500u;
-    config.supervisor.startup_grace_ms = 3500u;
-    config.supervisor.boot_confirm_stable_ms = 2000u;
+    fill_reliability_config(&config);
 
     status = app_context_configure_reliability(context, &config);
     if (status == SYS_OK) {
-        platform_f407_bind_reliability(&context->power,
-                                       &context->watchdog);
+        platform_f407_bind_reliability(&context->power, &context->watchdog);
     }
     return status;
 }

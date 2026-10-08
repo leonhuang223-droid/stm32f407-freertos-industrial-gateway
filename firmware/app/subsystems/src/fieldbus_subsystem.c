@@ -17,7 +17,7 @@ status_t fieldbus_subsystem_construct(fieldbus_subsystem_t *subsystem,
 {
     if (subsystem == 0 || modbus == 0 || can_bus == 0 ||
         local_can_node_id == 0u || local_can_node_id > 127u ||
-        can_recovery_delay_ms == 0u) {
+        can_recovery_delay_ms == 0u || can_recovery_delay_ms > INT32_MAX) {
         return ERR_INVALID_ARG;
     }
     memset(subsystem, 0, sizeof(*subsystem));
@@ -82,8 +82,8 @@ static status_t maintain_can_state(fieldbus_subsystem_t *subsystem,
             subsystem->health.can_recoveries++;
             subsystem->health.last_can_error = SYS_OK;
         } else {
-            subsystem->can_recovery_due_ms = now_ms +
-                subsystem->can_recovery_delay_ms;
+            subsystem->can_recovery_due_ms =
+                now_ms + subsystem->can_recovery_delay_ms;
             subsystem->health.last_can_error = status;
         }
         return status;
@@ -99,8 +99,8 @@ static status_t maintain_can_state(fieldbus_subsystem_t *subsystem,
     }
     if (subsystem->can_bus_off_latched == 0u) {
         subsystem->can_bus_off_latched = 1u;
-        subsystem->can_recovery_due_ms = now_ms +
-            subsystem->can_recovery_delay_ms;
+        subsystem->can_recovery_due_ms =
+            now_ms + subsystem->can_recovery_delay_ms;
         subsystem->health.can_bus_off_events++;
     }
     if (!time_reached(now_ms, subsystem->can_recovery_due_ms)) {
@@ -112,18 +112,26 @@ static status_t maintain_can_state(fieldbus_subsystem_t *subsystem,
         subsystem->can_bus_off_latched = 0u;
         subsystem->health.can_recoveries++;
     } else {
-        subsystem->can_recovery_due_ms = now_ms +
-            subsystem->can_recovery_delay_ms;
+        subsystem->can_recovery_due_ms =
+            now_ms + subsystem->can_recovery_delay_ms;
     }
     subsystem->health.last_can_error = status;
     return status;
 }
 
-status_t fieldbus_subsystem_process_can(fieldbus_subsystem_t *subsystem,
-                                        uint32_t event_bits, uint32_t now_ms,
-                                        gateway_measurement_t *measurements,
-                                        size_t capacity, size_t *count)
+status_t
+fieldbus_subsystem_process_can(fieldbus_subsystem_t *subsystem,
+                               const fieldbus_can_process_t *parameters)
 {
+    if (parameters == 0) {
+        return ERR_INVALID_ARG;
+    }
+    uint32_t event_bits = parameters->event_bits;
+    uint32_t now_ms = parameters->now_ms;
+    gateway_measurement_t *measurements = parameters->measurements;
+    size_t capacity = parameters->capacity;
+    size_t *count = parameters->count;
+
     status_t maintenance_status;
     status_t first_error = SYS_OK;
 
@@ -153,10 +161,10 @@ status_t fieldbus_subsystem_process_can(fieldbus_subsystem_t *subsystem,
             break;
         }
         subsystem->health.can_rx_frames++;
-        status = can_protocol_decode_measurement(&frame, now_ms,
-                                                 &source_node, &measurement);
-        if (status == ERR_UNSUPPORTED || source_node ==
-            subsystem->local_can_node_id) {
+        status = can_protocol_decode_measurement(
+            &frame, now_ms, &source_node, &measurement);
+        if (status == ERR_UNSUPPORTED ||
+            source_node == subsystem->local_can_node_id) {
             continue;
         }
         if (status != SYS_OK) {
@@ -182,8 +190,8 @@ status_t fieldbus_subsystem_send_can(fieldbus_subsystem_t *subsystem,
     if (subsystem == 0 || measurement == 0 || subsystem->can_started == 0u) {
         return ERR_DEVICE_NOT_READY;
     }
-    status = can_protocol_encode_measurement(subsystem->local_can_node_id,
-                                             measurement, &frame);
+    status = can_protocol_encode_measurement(
+        subsystem->local_can_node_id, measurement, &frame);
     if (status == SYS_OK) {
         status = can_bus_send(subsystem->can_bus, &frame);
     }

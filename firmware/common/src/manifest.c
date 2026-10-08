@@ -38,19 +38,18 @@ static int manifest_field_id(const char *key, manifest_field_id_t *out_id)
         manifest_field_id_t id;
     };
     static const struct field_map fields[] = {
-        { "manifest_version", MANIFEST_FIELD_VERSION },
-        { "target_id", MANIFEST_FIELD_TARGET_ID },
-        { "version", MANIFEST_FIELD_APP_VERSION },
-        { "target_slot", MANIFEST_FIELD_TARGET_SLOT },
-        { "link_address", MANIFEST_FIELD_LINK_ADDRESS },
-        { "image_size", MANIFEST_FIELD_IMAGE_SIZE },
-        { "crc32", MANIFEST_FIELD_CRC32 },
-        { "sha256", MANIFEST_FIELD_SHA256 },
-        { "download_url", MANIFEST_FIELD_DOWNLOAD_URL },
-        { "min_bootloader_version", MANIFEST_FIELD_MIN_BOOTLOADER_VERSION },
-        { "force_update", MANIFEST_FIELD_FORCE_UPDATE },
-        { "release_note", MANIFEST_FIELD_RELEASE_NOTE }
-    };
+        {"manifest_version", MANIFEST_FIELD_VERSION},
+        {"target_id", MANIFEST_FIELD_TARGET_ID},
+        {"version", MANIFEST_FIELD_APP_VERSION},
+        {"target_slot", MANIFEST_FIELD_TARGET_SLOT},
+        {"link_address", MANIFEST_FIELD_LINK_ADDRESS},
+        {"image_size", MANIFEST_FIELD_IMAGE_SIZE},
+        {"crc32", MANIFEST_FIELD_CRC32},
+        {"sha256", MANIFEST_FIELD_SHA256},
+        {"download_url", MANIFEST_FIELD_DOWNLOAD_URL},
+        {"min_bootloader_version", MANIFEST_FIELD_MIN_BOOTLOADER_VERSION},
+        {"force_update", MANIFEST_FIELD_FORCE_UPDATE},
+        {"release_note", MANIFEST_FIELD_RELEASE_NOTE}};
     size_t i;
 
     for (i = 0u; i < sizeof(fields) / sizeof(fields[0]); ++i) {
@@ -102,10 +101,8 @@ static const char *parse_bool_value(const char *p, uint32_t *out)
     return 0;
 }
 
-static const char *parse_json_string_value(const char *p,
-                                           char *out,
-                                           size_t capacity,
-                                           int truncate)
+static const char *
+parse_json_string_value(const char *p, char *out, size_t capacity, int truncate)
 {
     size_t count = 0u;
 
@@ -149,7 +146,8 @@ static int hex_value(char ch)
     return -1;
 }
 
-static const char *parse_sha256_value(const char *p, uint8_t out[IMAGE_SHA256_LEN])
+static const char *parse_sha256_value(const char *p,
+                                      uint8_t out[IMAGE_SHA256_LEN])
 {
     size_t i;
 
@@ -218,11 +216,83 @@ static int is_http_url(const char *url)
     return strncmp(url, "http://", 7u) == 0 && url[7] != '\0' && url[7] != '/';
 }
 
+static const char *parse_manifest_field(manifest_field_id_t id,
+                                        const char *p,
+                                        ota_manifest_t *out_manifest)
+{
+    uint32_t number;
+
+    switch (id) {
+    case MANIFEST_FIELD_VERSION:
+        p = parse_u32_value(p, &number);
+        if (p == 0 || number != 1u) {
+            return 0;
+        }
+        out_manifest->manifest_version = (uint16_t)number;
+        break;
+    case MANIFEST_FIELD_TARGET_ID:
+        p = parse_json_string_value(
+            p, out_manifest->target_id, sizeof(out_manifest->target_id), 0);
+        break;
+    case MANIFEST_FIELD_APP_VERSION:
+        p = parse_json_string_value(
+            p, out_manifest->version, sizeof(out_manifest->version), 0);
+        break;
+    case MANIFEST_FIELD_TARGET_SLOT:
+        p = parse_u32_value(p, &number);
+        if (p == 0 ||
+            (number != (uint32_t)SLOT_A && number != (uint32_t)SLOT_B)) {
+            return 0;
+        }
+        if (p != 0) {
+            out_manifest->target_slot = number;
+        }
+        break;
+    case MANIFEST_FIELD_LINK_ADDRESS:
+        p = parse_u32_value(p, &out_manifest->link_address);
+        break;
+    case MANIFEST_FIELD_IMAGE_SIZE:
+        p = parse_u32_value(p, &out_manifest->image_size);
+        break;
+    case MANIFEST_FIELD_CRC32:
+        p = parse_u32_value(p, &out_manifest->crc32);
+        break;
+    case MANIFEST_FIELD_SHA256:
+        p = parse_sha256_value(p, out_manifest->sha256);
+        break;
+    case MANIFEST_FIELD_DOWNLOAD_URL:
+        p = parse_json_string_value(p,
+                                    out_manifest->download_url,
+                                    sizeof(out_manifest->download_url),
+                                    0);
+        break;
+    case MANIFEST_FIELD_MIN_BOOTLOADER_VERSION:
+        p = parse_json_string_value(
+            p,
+            out_manifest->min_bootloader_version,
+            sizeof(out_manifest->min_bootloader_version),
+            0);
+        break;
+    case MANIFEST_FIELD_FORCE_UPDATE:
+        p = parse_bool_value(p, &out_manifest->force_update);
+        break;
+    case MANIFEST_FIELD_RELEASE_NOTE:
+        p = parse_json_string_value(p,
+                                    out_manifest->release_note,
+                                    sizeof(out_manifest->release_note),
+                                    1);
+        break;
+    default:
+        return 0;
+    }
+    return p;
+}
+
 status_t manifest_parse_json(const char *json, ota_manifest_t *out_manifest)
 {
     const char *p;
     uint32_t seen = 0u;
-    uint32_t number;
+    uint8_t closed = 0u;
 
     if (json == 0 || out_manifest == 0) {
         return ERR_INVALID_ARG;
@@ -260,61 +330,7 @@ status_t manifest_parse_json(const char *json, ota_manifest_t *out_manifest)
         }
         p = skip_ws(p + 1);
 
-        switch (id) {
-        case MANIFEST_FIELD_VERSION:
-            p = parse_u32_value(p, &number);
-            if (p == 0 || number != 1u) {
-                return ERR_IMAGE_INVALID;
-            }
-            out_manifest->manifest_version = (uint16_t)number;
-            break;
-        case MANIFEST_FIELD_TARGET_ID:
-            p = parse_json_string_value(p, out_manifest->target_id,
-                                        sizeof(out_manifest->target_id), 0);
-            break;
-        case MANIFEST_FIELD_APP_VERSION:
-            p = parse_json_string_value(p, out_manifest->version,
-                                        sizeof(out_manifest->version), 0);
-            break;
-        case MANIFEST_FIELD_TARGET_SLOT:
-            p = parse_u32_value(p, &number);
-            if (p == 0 || (number != (uint32_t)SLOT_A && number != (uint32_t)SLOT_B)) {
-                return ERR_IMAGE_INVALID;
-            }
-            if (p != 0) {
-                out_manifest->target_slot = number;
-            }
-            break;
-        case MANIFEST_FIELD_LINK_ADDRESS:
-            p = parse_u32_value(p, &out_manifest->link_address);
-            break;
-        case MANIFEST_FIELD_IMAGE_SIZE:
-            p = parse_u32_value(p, &out_manifest->image_size);
-            break;
-        case MANIFEST_FIELD_CRC32:
-            p = parse_u32_value(p, &out_manifest->crc32);
-            break;
-        case MANIFEST_FIELD_SHA256:
-            p = parse_sha256_value(p, out_manifest->sha256);
-            break;
-        case MANIFEST_FIELD_DOWNLOAD_URL:
-            p = parse_json_string_value(p, out_manifest->download_url,
-                                        sizeof(out_manifest->download_url), 0);
-            break;
-        case MANIFEST_FIELD_MIN_BOOTLOADER_VERSION:
-            p = parse_json_string_value(p, out_manifest->min_bootloader_version,
-                                        sizeof(out_manifest->min_bootloader_version), 0);
-            break;
-        case MANIFEST_FIELD_FORCE_UPDATE:
-            p = parse_bool_value(p, &out_manifest->force_update);
-            break;
-        case MANIFEST_FIELD_RELEASE_NOTE:
-            p = parse_json_string_value(p, out_manifest->release_note,
-                                        sizeof(out_manifest->release_note), 1);
-            break;
-        default:
-            return ERR_IMAGE_INVALID;
-        }
+        p = parse_manifest_field(id, p, out_manifest);
         if (p == 0) {
             return ERR_IMAGE_INVALID;
         }
@@ -328,6 +344,7 @@ status_t manifest_parse_json(const char *json, ota_manifest_t *out_manifest)
             continue;
         }
         if (*p == '}') {
+            closed = 1u;
             p = skip_ws(p + 1);
             if (*p != '\0') {
                 return ERR_IMAGE_INVALID;
@@ -336,7 +353,7 @@ status_t manifest_parse_json(const char *json, ota_manifest_t *out_manifest)
         }
         return ERR_IMAGE_INVALID;
     }
-    if (seen != ((1u << MANIFEST_FIELD_COUNT) - 1u)) {
+    if (closed == 0u || seen != ((1u << MANIFEST_FIELD_COUNT) - 1u)) {
         return ERR_IMAGE_INVALID;
     }
     if (!is_http_url(out_manifest->download_url)) {
@@ -346,32 +363,34 @@ status_t manifest_parse_json(const char *json, ota_manifest_t *out_manifest)
     return SYS_OK;
 }
 
-status_t manifest_validate(const ota_manifest_t *manifest, const manifest_validate_context_t *context)
+status_t manifest_validate(const ota_manifest_t *manifest,
+                           const manifest_validate_context_t *context)
 {
     const partition_t *partition;
     int compare_result = 0;
     status_t status;
 
-    if (manifest == 0 || context == 0 ||
-        context->target_id == 0 ||
+    if (manifest == 0 || context == 0 || context->target_id == 0 ||
         context->current_version == 0 ||
         context->current_bootloader_version == 0) {
         return ERR_INVALID_ARG;
     }
     if (!string_present(manifest->target_id, sizeof(manifest->target_id)) ||
         !string_present(manifest->version, sizeof(manifest->version)) ||
-        !string_present(manifest->download_url, sizeof(manifest->download_url)) ||
-        !string_present(manifest->min_bootloader_version, sizeof(manifest->min_bootloader_version)) ||
+        !string_present(manifest->download_url,
+                        sizeof(manifest->download_url)) ||
+        !string_present(manifest->min_bootloader_version,
+                        sizeof(manifest->min_bootloader_version)) ||
         strcmp(manifest->target_id, context->target_id) != 0 ||
-        manifest->manifest_version != 1u ||
-        manifest->image_size == 0u ||
+        manifest->manifest_version != 1u || manifest->image_size == 0u ||
         !sha256_nonzero(manifest->sha256) ||
         !is_http_url(manifest->download_url) ||
         (manifest->force_update != 0u && manifest->force_update != 1u)) {
         return ERR_IMAGE_INVALID;
     }
 
-    if (manifest->target_slot != (uint32_t)SLOT_A && manifest->target_slot != (uint32_t)SLOT_B) {
+    if (manifest->target_slot != (uint32_t)SLOT_A &&
+        manifest->target_slot != (uint32_t)SLOT_B) {
         return ERR_SLOT_MISMATCH;
     }
 
@@ -385,7 +404,8 @@ status_t manifest_validate(const ota_manifest_t *manifest, const manifest_valida
         return ERR_IMAGE_INVALID;
     }
 
-    status = version_compare(manifest->version, context->current_version, &compare_result);
+    status = version_compare(
+        manifest->version, context->current_version, &compare_result);
     if (status != SYS_OK) {
         return ERR_IMAGE_INVALID;
     }

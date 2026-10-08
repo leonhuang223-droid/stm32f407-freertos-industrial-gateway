@@ -7,7 +7,8 @@ static int expired(const request_lifecycle_t *request, uint32_t now_ms)
 }
 
 status_t request_lifecycle_submit(request_lifecycle_t *request,
-                                  uint32_t now_ms, uint32_t timeout_ms)
+                                  uint32_t now_ms,
+                                  uint32_t timeout_ms)
 {
     if (request == 0 || timeout_ms == 0u || timeout_ms > INT32_MAX) {
         return ERR_INVALID_ARG;
@@ -27,15 +28,17 @@ status_t request_lifecycle_submit(request_lifecycle_t *request,
 }
 
 status_t request_lifecycle_begin(request_lifecycle_t *request,
-                                 uint32_t generation, uint32_t now_ms)
+                                 uint32_t generation,
+                                 uint32_t now_ms)
 {
     status_t result;
     if (request == 0 || generation != request->generation ||
         request->state != REQUEST_QUEUED) {
         return ERR_INVALID_ARG;
     }
-    result = expired(request, now_ms) ? ERR_TIMEOUT :
-        (request->cancel_requested != 0u ? ERR_OTA_ABORTED : SYS_OK);
+    result = expired(request, now_ms)
+                 ? ERR_TIMEOUT
+                 : (request->cancel_requested != 0u ? ERR_OTA_ABORTED : SYS_OK);
     if (result != SYS_OK) {
         request->result = result;
         request->state = REQUEST_COMPLETED;
@@ -58,10 +61,12 @@ status_t request_lifecycle_poll(const request_lifecycle_t *request,
 }
 
 status_t request_lifecycle_complete(request_lifecycle_t *request,
-                                    uint32_t generation, status_t result)
+                                    uint32_t generation,
+                                    status_t result)
 {
     if (request == 0 || generation != request->generation ||
-        (request->state != REQUEST_RUNNING && request->state != REQUEST_QUEUED) ||
+        (request->state != REQUEST_RUNNING &&
+         request->state != REQUEST_QUEUED) ||
         result == ERR_IN_PROGRESS) {
         return ERR_INVALID_ARG;
     }

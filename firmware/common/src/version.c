@@ -3,7 +3,8 @@
 #include <ctype.h>
 #include <stddef.h>
 
-static status_t parse_version_part(const char **cursor, unsigned int *value, int expect_dot)
+static status_t
+parse_version_part(const char **cursor, unsigned int *value, int expect_dot)
 {
     const char *p;
     unsigned int parsed = 0u;

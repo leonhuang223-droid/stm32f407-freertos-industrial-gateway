@@ -42,7 +42,8 @@ typedef struct {
 
 typedef struct {
     status_t (*init)(ads1115_t *device);
-    status_t (*sample)(ads1115_t *device, uint32_t now_ms,
+    status_t (*sample)(ads1115_t *device,
+                       uint32_t now_ms,
                        gateway_measurement_t *out_measurement);
     status_t (*suspend)(ads1115_t *device);
     status_t (*resume)(ads1115_t *device);
@@ -56,10 +57,12 @@ struct ads1115 {
     gateway_device_health_t health;
 };
 
-status_t ads1115_construct(ads1115_t *device, i2c_bus_t *bus,
+status_t ads1115_construct(ads1115_t *device,
+                           i2c_bus_t *bus,
                            const ads1115_config_t *config);
 status_t ads1115_init(ads1115_t *device);
-status_t ads1115_sample(ads1115_t *device, uint32_t now_ms,
+status_t ads1115_sample(ads1115_t *device,
+                        uint32_t now_ms,
                         gateway_measurement_t *out_measurement);
 status_t ads1115_suspend(ads1115_t *device);
 status_t ads1115_resume(ads1115_t *device);

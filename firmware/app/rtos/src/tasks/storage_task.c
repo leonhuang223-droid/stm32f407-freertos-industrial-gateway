@@ -4,8 +4,9 @@
 
 static void process_ota_storage_request(app_storage_task_context_t *context,
                                         ota_storage_request_t *request);
-static status_t persist_runtime_config(void *context,
-    const gateway_storage_config_request_t *request);
+static status_t
+persist_runtime_config(void *context,
+                       const gateway_storage_config_request_t *request);
 
 static void process_ota_storage_request(app_storage_task_context_t *context,
                                         ota_storage_request_t *request)
@@ -15,8 +16,14 @@ static void process_ota_storage_request(app_storage_task_context_t *context,
     if (request == 0) {
         return;
     }
-    if (request_lifecycle_begin(&request->lifecycle, request->lifecycle.generation,
-            (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS)) != SYS_OK) {
+    status_t begin_status;
+    taskENTER_CRITICAL();
+    begin_status = request_lifecycle_begin(
+        &request->lifecycle,
+        request->lifecycle.generation,
+        (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS));
+    taskEXIT_CRITICAL();
+    if (begin_status != SYS_OK) {
         notify_ota_waiter(request->waiter);
         return;
     }
@@ -31,17 +38,18 @@ static void process_ota_storage_request(app_storage_task_context_t *context,
     } else {
         switch (request->operation) {
         case OTA_STORAGE_BEGIN:
-            request->status = ota_staging_begin(
-                context->ota_staging, request->length);
+            request->status =
+                ota_staging_begin(context->ota_staging, request->length);
             break;
         case OTA_STORAGE_ERASE_NEXT:
-            request->status = ota_staging_erase_next(
-                context->ota_staging, &request->complete);
+            request->status = ota_staging_erase_next(context->ota_staging,
+                                                     &request->complete);
             break;
         case OTA_STORAGE_WRITE:
-            request->status = ota_staging_write(
-                context->ota_staging, request->offset,
-                request->data, request->length);
+            request->status = ota_staging_write(context->ota_staging,
+                                                request->offset,
+                                                request->data,
+                                                request->length);
             break;
         case OTA_STORAGE_COMMIT_METADATA:
             request->status = ota_staging_commit_metadata(
@@ -58,41 +66,26 @@ static void process_ota_storage_request(app_storage_task_context_t *context,
     ota_storage_request_complete(request, request->status);
 }
 
-static status_t persist_runtime_config(void *context,
-    const gateway_storage_config_request_t *request)
+static status_t
+persist_runtime_config(void *context,
+                       const gateway_storage_config_request_t *request)
 {
-    return context != 0
-        ? storage_subsystem_save_config(context, request) : ERR_DEVICE_NOT_READY;
+    return context != 0 ? storage_subsystem_save_config(context, request)
+                        : ERR_DEVICE_NOT_READY;
 }
 
-void app_storage_task_step(app_storage_task_context_t *context,
-                            app_storage_task_state_t *state, uint32_t wait_ms)
+static int handle_storage_power(app_storage_task_context_t *context,
+                                app_storage_task_state_t *state,
+                                uint32_t now_ms,
+                                EventBits_t power_bits)
 {
-    uint32_t log_ready = 0u;
-    uint32_t alarm_ready = 0u;
-    uint32_t config_ready = 0u;
-    uint32_t ota_ready = 0u;
-    uint8_t flash_lock_held = 0u;
-    uint8_t had_activity = 0u;
-    QueueSetMemberHandle_t ready;
-    uint32_t now_ms =
-        (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
-    EventBits_t power_bits = xEventGroupGetBits(channels.system_events);
-    power_mode_t current_power_mode;
-
-    app_critical_enter();
-    current_power_mode = context->power->current_mode;
-    app_critical_exit();
-
     if ((power_bits & SYSTEM_EVENT_POWER_QUIESCE_REQUEST) != 0u) {
         if (state->power_suspended == 0u) {
             status_t status = SYS_OK;
 
             if (context->storage->health.mounted != 0u &&
-                power_lock_acquire(PM_LOCK_FLASH_WRITE) ==
-                    SYS_OK) {
-                status = storage_subsystem_power_down(
-                    context->storage);
+                power_lock_acquire(PM_LOCK_FLASH_WRITE) == SYS_OK) {
+                status = storage_subsystem_power_down(context->storage);
                 (void)power_lock_release(PM_LOCK_FLASH_WRITE);
             } else if (context->storage->health.mounted != 0u) {
                 status = ERR_DEVICE_NOT_READY;
@@ -100,7 +93,7 @@ void app_storage_task_step(app_storage_task_context_t *context,
             if (status == SYS_OK) {
                 state->power_suspended = 1u;
                 xEventGroupSetBits(channels.system_events,
-                    SYSTEM_EVENT_POWER_ACK_STORAGE);
+                                   SYSTEM_EVENT_POWER_ACK_STORAGE);
             } else {
                 xEventGroupSetBits(channels.system_events,
                                    SYSTEM_EVENT_FAULT_ACTIVE);
@@ -108,7 +101,7 @@ void app_storage_task_step(app_storage_task_context_t *context,
         }
         app_runtime_mark_alive(GATEWAY_TASK_STORAGE);
         vTaskDelay(pdMS_TO_TICKS(20u));
-        return;
+        return 1;
     }
     if (state->power_suspended != 0u) {
         status_t status = SYS_OK;
@@ -122,7 +115,7 @@ void app_storage_task_step(app_storage_task_context_t *context,
         }
         xEventGroupClearBits(channels.system_events,
                              SYSTEM_EVENT_POWER_ACK_STORAGE);
-        state->power_suspended = 0u;
+        state->power_suspended = status == SYS_OK ? 0u : 1u;
         state->last_activity_ms = now_ms;
         if (status != SYS_OK) {
             xEventGroupSetBits(channels.system_events,
@@ -130,8 +123,16 @@ void app_storage_task_step(app_storage_task_context_t *context,
         }
     }
 
+    return 0;
+}
+
+static void prepare_storage(app_storage_task_context_t *context,
+                            app_storage_task_state_t *state,
+                            uint32_t now_ms)
+{
     if (context->storage->health.mounted == 0u &&
-        (state->mount_attempted == 0u || now_ms - state->last_mount_ms >= 1000u)) {
+        (state->mount_attempted == 0u ||
+         now_ms - state->last_mount_ms >= 1000u)) {
         state->mount_attempted = 1u;
         state->last_mount_ms = now_ms;
         if (power_lock_acquire(PM_LOCK_FLASH_WRITE) == SYS_OK) {
@@ -153,21 +154,19 @@ void app_storage_task_step(app_storage_task_context_t *context,
 
     if (context->storage->health.mounted != 0u &&
         state->fault_archive_complete == 0u &&
-        ((*context->initialization_mask) & APP_INITIALIZED_RELIABILITY) !=
-            0u) {
+        ((*context->initialization_mask) & APP_INITIALIZED_RELIABILITY) != 0u) {
         fault_record_t record;
-        status_t fault_status = fault_recorder_get(
-            context->fault_recorder, &record);
+        status_t fault_status =
+            fault_recorder_get(context->fault_recorder, &record);
 
         if (fault_status == ERR_DEVICE_NOT_READY) {
             state->fault_archive_complete = 1u;
         } else if (fault_status == SYS_OK &&
-                   power_lock_acquire(PM_LOCK_FLASH_WRITE) ==
-                       SYS_OK) {
-            if (xSemaphoreTake(channels.config_mutex,
-                               portMAX_DELAY) == pdPASS) {
-                fault_status = storage_subsystem_archive_fault(
-                    context->storage, &record);
+                   power_lock_acquire(PM_LOCK_FLASH_WRITE) == SYS_OK) {
+            if (xSemaphoreTake(channels.config_mutex, pdMS_TO_TICKS(100u)) ==
+                pdPASS) {
+                fault_status =
+                    storage_subsystem_archive_fault(context->storage, &record);
                 xSemaphoreGive(channels.config_mutex);
             } else {
                 fault_status = ERR_TIMEOUT;
@@ -181,11 +180,84 @@ void app_storage_task_step(app_storage_task_context_t *context,
             }
         }
     }
+}
 
-    ready = xQueueSelectFromSet(channels.storage_set,
-                                pdMS_TO_TICKS(wait_ms));
-    had_activity = ready != 0 ? 1u : 0u;
-    if (had_activity != 0u &&
+static void persist_alarm_records(app_storage_task_context_t *context,
+                                  uint32_t ready_count,
+                                  uint8_t flash_lock_held)
+{
+    while (ready_count != 0u) {
+        gateway_storage_alarm_request_t request;
+
+        ready_count--;
+        if (xQueueReceive(channels.storage_alarm, &request, 0u) == pdPASS &&
+            (flash_lock_held == 0u ||
+             storage_subsystem_append_alarm(context->storage, &request) !=
+                 SYS_OK)) {
+            xEventGroupSetBits(channels.system_events,
+                               SYSTEM_EVENT_FAULT_ACTIVE);
+        }
+    }
+}
+
+static void persist_config_records(app_storage_task_context_t *context,
+                                   uint32_t ready_count,
+                                   uint8_t flash_lock_held)
+{
+    while (ready_count != 0u) {
+        gateway_storage_config_request_t request;
+        status_t status = ERR_IO;
+
+        ready_count--;
+        if (xQueueReceive(channels.storage_config, &request, 0u) != pdPASS) {
+            continue;
+        }
+        status = app_config_persist_request(
+            &request,
+            persist_runtime_config,
+            flash_lock_held != 0u ? context->storage : 0);
+        if (status != SYS_OK) {
+            (*context->storage_config_publish_drops)++;
+            xEventGroupSetBits(channels.system_events,
+                               SYSTEM_EVENT_FAULT_ACTIVE);
+        }
+    }
+}
+
+static void persist_log_records(app_storage_task_context_t *context,
+                                uint32_t ready_count,
+                                uint8_t flash_lock_held)
+{
+    while (ready_count != 0u) {
+        gateway_storage_log_request_t request;
+
+        ready_count--;
+        if (xQueueReceive(channels.storage_log, &request, 0u) == pdPASS &&
+            (flash_lock_held == 0u ||
+             storage_subsystem_append_log(context->storage, &request) !=
+                 SYS_OK)) {
+            (*context->storage_log_publish_drops)++;
+        }
+    }
+}
+
+typedef struct {
+    uint32_t log;
+    uint32_t alarm;
+    uint32_t config;
+    uint32_t ota;
+    uint8_t had_activity;
+} storage_batch_t;
+
+static void select_storage_requests(app_storage_task_context_t *context,
+                                    uint32_t wait_ms,
+                                    storage_batch_t *batch)
+{
+    QueueSetMemberHandle_t ready;
+
+    ready = xQueueSelectFromSet(channels.storage_set, pdMS_TO_TICKS(wait_ms));
+    batch->had_activity = ready != 0 ? 1u : 0u;
+    if (batch->had_activity != 0u &&
         context->storage->health.powered_down != 0u) {
         status_t wake_status = ERR_DEVICE_NOT_READY;
 
@@ -201,29 +273,77 @@ void app_storage_task_step(app_storage_task_context_t *context,
     }
     while (ready != 0) {
         if (ready == channels.storage_alarm) {
-            alarm_ready++;
+            batch->alarm++;
         } else if (ready == channels.storage_config) {
-            config_ready++;
+            batch->config++;
         } else if (ready == channels.storage_log) {
-            log_ready++;
+            batch->log++;
         } else if (ready == channels.ota_storage_request) {
-            ota_ready++;
+            batch->ota++;
         }
         ready = xQueueSelectFromSet(channels.storage_set, 0u);
     }
+}
 
-    while (ota_ready != 0u) {
+static void apply_storage_idle_policy(app_storage_task_context_t *context,
+                                      app_storage_task_state_t *state,
+                                      uint8_t had_activity)
+{
+    uint32_t now_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+    EventBits_t power_bits = xEventGroupGetBits(channels.system_events);
+    power_mode_t current_power_mode;
+    app_critical_enter();
+    current_power_mode = context->power->current_mode;
+    app_critical_exit();
+
+    if (had_activity != 0u) {
+        state->last_activity_ms =
+            (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+    } else if (current_power_mode == POWER_ECO &&
+               context->storage->health.mounted != 0u &&
+               context->storage->health.powered_down == 0u &&
+               now_ms - state->last_activity_ms >= STORAGE_ECO_IDLE_MS &&
+               (power_bits & SYSTEM_EVENT_OTA_ACTIVE) == 0u &&
+               power_lock_acquire(PM_LOCK_FLASH_WRITE) == SYS_OK) {
+        status_t power_status = storage_subsystem_power_down(context->storage);
+
+        (void)power_lock_release(PM_LOCK_FLASH_WRITE);
+        if (power_status != SYS_OK) {
+            xEventGroupSetBits(channels.system_events,
+                               SYSTEM_EVENT_FAULT_ACTIVE);
+        }
+    }
+}
+
+void app_storage_task_step(app_storage_task_context_t *context,
+                           app_storage_task_state_t *state,
+                           uint32_t wait_ms)
+{
+    uint8_t flash_lock_held = 0u;
+    storage_batch_t batch = {0};
+    uint32_t now_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+    EventBits_t power_bits = xEventGroupGetBits(channels.system_events);
+
+    if (handle_storage_power(context, state, now_ms, power_bits)) {
+        return;
+    }
+
+    prepare_storage(context, state, now_ms);
+
+    select_storage_requests(context, wait_ms, &batch);
+
+    while (batch.ota != 0u) {
         ota_storage_request_t *request = 0;
 
-        ota_ready--;
-        if (xQueueReceive(channels.ota_storage_request, &request,
-                          0u) == pdPASS) {
+        batch.ota--;
+        if (xQueueReceive(channels.ota_storage_request, &request, 0u) ==
+            pdPASS) {
             process_ota_storage_request(context, request);
             app_runtime_mark_alive(GATEWAY_TASK_STORAGE);
         }
     }
 
-    if (alarm_ready != 0u || config_ready != 0u || log_ready != 0u) {
+    if (batch.alarm != 0u || batch.config != 0u || batch.log != 0u) {
         if (context->storage->health.mounted != 0u &&
             context->storage->health.powered_down == 0u &&
             power_lock_acquire(PM_LOCK_FLASH_WRITE) == SYS_OK) {
@@ -234,78 +354,22 @@ void app_storage_task_step(app_storage_task_context_t *context,
         }
     }
 
-    while (alarm_ready != 0u) {
-        gateway_storage_alarm_request_t request;
-
-        alarm_ready--;
-        if (xQueueReceive(channels.storage_alarm, &request, 0u) ==
-                pdPASS &&
-            (flash_lock_held == 0u ||
-             storage_subsystem_append_alarm(context->storage,
-                                            &request) != SYS_OK)) {
-            xEventGroupSetBits(channels.system_events,
-                               SYSTEM_EVENT_FAULT_ACTIVE);
-        }
-    }
-    while (config_ready != 0u) {
-        gateway_storage_config_request_t request;
-        status_t status = ERR_IO;
-
-        config_ready--;
-        if (xQueueReceive(channels.storage_config, &request, 0u) !=
-            pdPASS) {
-            continue;
-        }
-        status = app_config_persist_request(&request, persist_runtime_config,
-            flash_lock_held != 0u ? context->storage : 0);
-        if (status != SYS_OK) {
-            (*context->storage_config_publish_drops)++;
-            xEventGroupSetBits(channels.system_events,
-                               SYSTEM_EVENT_FAULT_ACTIVE);
-        }
-    }
-    while (log_ready != 0u) {
-        gateway_storage_log_request_t request;
-
-        log_ready--;
-        if (xQueueReceive(channels.storage_log, &request, 0u) ==
-                pdPASS &&
-            (flash_lock_held == 0u ||
-             storage_subsystem_append_log(context->storage,
-                                          &request) != SYS_OK)) {
-            (*context->storage_log_publish_drops)++;
-        }
-    }
+    persist_alarm_records(context, batch.alarm, flash_lock_held);
+    persist_config_records(context, batch.config, flash_lock_held);
+    persist_log_records(context, batch.log, flash_lock_held);
     if (flash_lock_held != 0u) {
         (void)power_lock_release(PM_LOCK_FLASH_WRITE);
     }
-    if (had_activity != 0u) {
-        state->last_activity_ms = (uint32_t)(xTaskGetTickCount() *
-                                      portTICK_PERIOD_MS);
-    } else if (current_power_mode == POWER_ECO &&
-               context->storage->health.mounted != 0u &&
-               context->storage->health.powered_down == 0u &&
-               now_ms - state->last_activity_ms >= STORAGE_ECO_IDLE_MS &&
-               (power_bits & SYSTEM_EVENT_OTA_ACTIVE) == 0u &&
-               power_lock_acquire(PM_LOCK_FLASH_WRITE) ==
-                   SYS_OK) {
-        status_t power_status = storage_subsystem_power_down(
-            context->storage);
-
-        (void)power_lock_release(PM_LOCK_FLASH_WRITE);
-        if (power_status != SYS_OK) {
-            xEventGroupSetBits(channels.system_events,
-                               SYSTEM_EVENT_FAULT_ACTIVE);
-        }
-    }
+    apply_storage_idle_policy(context, state, batch.had_activity);
     app_runtime_mark_alive(GATEWAY_TASK_STORAGE);
 }
 
 void storage_task(void *argument)
 {
     app_storage_task_context_t *context = argument;
-    app_storage_task_state_t state = { 0 };
-    state.last_activity_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+    app_storage_task_state_t state = {0};
+    state.last_activity_ms =
+        (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
     for (;;) {
         app_storage_task_step(context, &state, 1000u);
     }

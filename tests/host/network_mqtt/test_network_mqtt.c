@@ -38,6 +38,7 @@ typedef struct {
     unsigned int suspend_calls;
     uint8_t auto_puback;
     uint8_t fail_receive_once;
+    status_t close_status;
 } fake_transport_t;
 
 static size_t mqtt_body_offset(const uint8_t *packet, size_t length)
@@ -164,7 +165,7 @@ static status_t fake_transport_close(void *context)
     fake_transport_t *port = context;
 
     port->close_calls++;
-    return SYS_OK;
+    return port->close_status;
 }
 
 static status_t fake_transport_suspend(void *context)
@@ -255,14 +256,12 @@ static int test_mqtt_codec(void)
                                                sizeof(packet), &length));
     EXPECT_TRUE(packet[0] == 0x10u);
     EXPECT_TRUE(length > 12u);
-    EXPECT_STATUS(SYS_OK, mqtt_encode_publish_qos1(
-        "factory/line/telemetry", (const uint8_t *)"{}", 2u,
-        0x1234u, 0u, packet, sizeof(packet), &length));
+    EXPECT_STATUS(SYS_OK, mqtt_encode_publish_qos1("factory/line/telemetry",
+    &(const mqtt_publish_request_t){ (const uint8_t *)"{}", 2u, 0x1234u, 0u, packet, sizeof(packet), &length }));
     EXPECT_TRUE(packet[0] == 0x32u);
     EXPECT_TRUE(publish_packet_id(packet, length) == 0x1234u);
-    EXPECT_STATUS(SYS_OK, mqtt_encode_publish_qos1(
-        "factory/line/telemetry", (const uint8_t *)"{}", 2u,
-        0x1234u, 1u, packet, sizeof(packet), &length));
+    EXPECT_STATUS(SYS_OK, mqtt_encode_publish_qos1("factory/line/telemetry",
+    &(const mqtt_publish_request_t){ (const uint8_t *)"{}", 2u, 0x1234u, 1u, packet, sizeof(packet), &length }));
     EXPECT_TRUE(packet[0] == 0x3au);
     EXPECT_STATUS(SYS_OK, mqtt_decode_packet(connack, sizeof(connack),
                                              &view, &consumed));
@@ -357,6 +356,42 @@ static int test_retry_and_ota_lease(void)
     EXPECT_TRUE(port.sent[port.sent_count - 1u][0] == 0x3au);
     EXPECT_STATUS(SYS_OK, network_subsystem_get_health(&network, &health));
     EXPECT_TRUE(health.publish_retries == 1u);
+    return 0;
+}
+
+static int test_lease_close_failure(void)
+{
+    fake_transport_t port = { 0 };
+    network_transport_t transport;
+    network_subsystem_t network;
+    network_subsystem_config_t config = network_config();
+    network_health_t health;
+    unsigned int connects;
+
+    EXPECT_STATUS(SYS_OK, network_transport_construct(
+        &transport, &fake_transport_ops, &port));
+    EXPECT_STATUS(SYS_OK, network_subsystem_construct(
+        &network, &transport, &config));
+    EXPECT_STATUS(SYS_OK, network_subsystem_start(&network, 0u));
+    port.close_status = ERR_IO;
+    EXPECT_STATUS(ERR_IO, network_subsystem_acquire_ota_lease(&network, 1u));
+    EXPECT_STATUS(SYS_OK, network_subsystem_get_health(&network, &health));
+    EXPECT_TRUE(health.ota_lease_active == 0u);
+    EXPECT_TRUE(network_transport_is_connected(&transport) != 0u);
+    port.close_status = SYS_OK;
+    EXPECT_STATUS(SYS_OK, network_subsystem_acquire_ota_lease(&network, 2u));
+    EXPECT_STATUS(SYS_OK, network_transport_init(&transport));
+    EXPECT_STATUS(SYS_OK, network_transport_connect(&transport, "ota", 80u));
+    port.close_status = ERR_IO;
+    EXPECT_STATUS(ERR_IO, network_subsystem_release_ota_lease(&network, 3u));
+    EXPECT_STATUS(SYS_OK, network_subsystem_get_health(&network, &health));
+    EXPECT_TRUE(health.ota_lease_active != 0u);
+    connects = port.connect_calls;
+    EXPECT_STATUS(SYS_OK, network_subsystem_process(&network, 4u));
+    EXPECT_TRUE(port.connect_calls == connects);
+    port.close_status = SYS_OK;
+    EXPECT_STATUS(SYS_OK, network_subsystem_release_ota_lease(&network, 5u));
+    EXPECT_STATUS(SYS_OK, network_subsystem_process(&network, 5u));
     return 0;
 }
 
@@ -684,7 +719,8 @@ static int test_cooperative_connect_and_cancel(void)
     unsigned int count;
     EXPECT_STATUS(SYS_OK, esp8266_construct(&esp, &fake_serial_ops, &serial, &esp_config));
     EXPECT_STATUS(SYS_OK, network_transport_construct(&transport, esp8266_network_transport_ops(), &esp));
-    transport.connect_steps = esp8266_connect_step_ops();
+    EXPECT_STATUS(SYS_OK, network_transport_set_connect_steps(
+        &transport, esp8266_connect_step_ops()));
     EXPECT_STATUS(SYS_OK, network_subsystem_construct(&network, &transport, &config));
     serial.fail_join = 1u;
     EXPECT_STATUS(SYS_OK, network_subsystem_start(&network, serial.now));
@@ -703,6 +739,10 @@ static int test_cooperative_connect_and_cancel(void)
     serial.auto_connack = 1u;
     for (count = 0u; count < 40u && network.health.mqtt_ready == 0u; ++count) {
         status_t status = network_subsystem_process(&network, serial.now);
+        if (status != SYS_OK && status != ERR_IN_PROGRESS) {
+            fprintf(stderr, "cooperative reconnect failed: %s phase=%u\n",
+                    error_to_string(status), network.connect_phase);
+        }
         EXPECT_TRUE(status == SYS_OK || status == ERR_IN_PROGRESS);
         serial.now += 20u;
     }
@@ -768,6 +808,7 @@ int main(void)
     if (test_mqtt_codec() != 0 ||
         test_alarm_priority_and_ack() != 0 ||
         test_retry_and_ota_lease() != 0 ||
+        test_lease_close_failure() != 0 ||
         test_disconnect_reinitializes_transport() != 0 ||
         test_network_suspend_resume() != 0 ||
         test_esp8266_raw_tcp() != 0 ||

@@ -39,8 +39,8 @@ static status_t wait_for_ota_io(ota_rtos_port_t *port,
         uint32_t events = 0u;
         status_t status;
         taskENTER_CRITICAL();
-        status = request_lifecycle_poll(lifecycle,
-            (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS));
+        status = request_lifecycle_poll(
+            lifecycle, (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS));
         if (status == ERR_TIMEOUT) {
             request_lifecycle_cancel(lifecycle);
         }
@@ -49,8 +49,8 @@ static status_t wait_for_ota_io(ota_rtos_port_t *port,
             ota_poll_cancel_commands(port);
             return port->cancel_seen != 0u ? ERR_OTA_ABORTED : status;
         }
-        (void)xTaskNotifyWait(0u, UINT32_MAX, &events,
-                              pdMS_TO_TICKS(OTA_IO_WAIT_SLICE_MS));
+        (void)xTaskNotifyWait(
+            0u, UINT32_MAX, &events, pdMS_TO_TICKS(OTA_IO_WAIT_SLICE_MS));
         ota_poll_cancel_commands(port);
         if (port->cancel_seen != 0u) {
             taskENTER_CRITICAL();
@@ -62,21 +62,21 @@ static status_t wait_for_ota_io(ota_rtos_port_t *port,
 }
 
 void ota_network_request_complete(ota_network_request_t *request,
-                                          status_t status)
+                                  status_t status)
 {
     taskENTER_CRITICAL();
-    (void)request_lifecycle_complete(&request->lifecycle,
-                                     request->lifecycle.generation, status);
+    (void)request_lifecycle_complete(
+        &request->lifecycle, request->lifecycle.generation, status);
     taskEXIT_CRITICAL();
     notify_ota_waiter(request->waiter);
 }
 
 void ota_storage_request_complete(ota_storage_request_t *request,
-                                          status_t status)
+                                  status_t status)
 {
     taskENTER_CRITICAL();
-    (void)request_lifecycle_complete(&request->lifecycle,
-                                     request->lifecycle.generation, status);
+    (void)request_lifecycle_complete(
+        &request->lifecycle, request->lifecycle.generation, status);
     taskEXIT_CRITICAL();
     notify_ota_waiter(request->waiter);
 }
@@ -86,11 +86,13 @@ static status_t submit_ota_network_request(ota_rtos_port_t *port,
 {
     ota_network_request_t *queued = &ota_network_mailbox;
     status_t status;
-    if (ota_network_mailbox_busy != 0u && queued->lifecycle.state != REQUEST_COMPLETED) {
+    if (ota_network_mailbox_busy != 0u &&
+        queued->lifecycle.state != REQUEST_COMPLETED) {
         return ERR_DEVICE_NOT_READY;
     }
     if (request->capacity > sizeof(ota_network_io_buffer) ||
-        (request->url != 0 && strlen(request->url) >= sizeof(ota_network_io_url))) {
+        (request->url != 0 &&
+         strlen(request->url) >= sizeof(ota_network_io_url))) {
         return ERR_INVALID_ARG;
     }
     {
@@ -105,14 +107,17 @@ static status_t submit_ota_network_request(ota_rtos_port_t *port,
     queued->buffer = ota_network_io_buffer;
     queued->waiter = xTaskGetCurrentTaskHandle();
     queued->status = ERR_DEVICE_NOT_READY;
-    (void)request_lifecycle_submit(&queued->lifecycle,
-        (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS), OTA_NETWORK_IO_TIMEOUT_MS);
+    (void)request_lifecycle_submit(
+        &queued->lifecycle,
+        (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS),
+        OTA_NETWORK_IO_TIMEOUT_MS);
     clear_ota_notification();
     ota_network_mailbox_busy = 1u;
-    if (xQueueSend(channels.ota_network_request, &queued,
+    if (xQueueSend(channels.ota_network_request,
+                   &queued,
                    pdMS_TO_TICKS(100u)) != pdPASS) {
-        (void)request_lifecycle_complete(&queued->lifecycle,
-            queued->lifecycle.generation, ERR_QUEUE_FULL);
+        (void)request_lifecycle_complete(
+            &queued->lifecycle, queued->lifecycle.generation, ERR_QUEUE_FULL);
         ota_network_mailbox_busy = 0u;
         return ERR_QUEUE_FULL;
     }
@@ -133,7 +138,8 @@ static status_t submit_ota_storage_request(ota_rtos_port_t *port,
 {
     ota_storage_request_t *queued = &ota_storage_mailbox;
     status_t status;
-    if (ota_storage_mailbox_busy != 0u && queued->lifecycle.state != REQUEST_COMPLETED) {
+    if (ota_storage_mailbox_busy != 0u &&
+        queued->lifecycle.state != REQUEST_COMPLETED) {
         return ERR_DEVICE_NOT_READY;
     }
     if (request->data != 0 && request->length > sizeof(ota_storage_io_buffer)) {
@@ -150,14 +156,17 @@ static status_t submit_ota_storage_request(ota_rtos_port_t *port,
     }
     queued->waiter = xTaskGetCurrentTaskHandle();
     queued->status = ERR_DEVICE_NOT_READY;
-    (void)request_lifecycle_submit(&queued->lifecycle,
-        (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS), OTA_STORAGE_IO_TIMEOUT_MS);
+    (void)request_lifecycle_submit(
+        &queued->lifecycle,
+        (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS),
+        OTA_STORAGE_IO_TIMEOUT_MS);
     clear_ota_notification();
     ota_storage_mailbox_busy = 1u;
-    if (xQueueSend(channels.ota_storage_request, &queued,
+    if (xQueueSend(channels.ota_storage_request,
+                   &queued,
                    pdMS_TO_TICKS(100u)) != pdPASS) {
-        (void)request_lifecycle_complete(&queued->lifecycle,
-            queued->lifecycle.generation, ERR_QUEUE_FULL);
+        (void)request_lifecycle_complete(
+            &queued->lifecycle, queued->lifecycle.generation, ERR_QUEUE_FULL);
         ota_storage_mailbox_busy = 0u;
         return ERR_QUEUE_FULL;
     }
@@ -169,9 +178,11 @@ static status_t submit_ota_storage_request(ota_rtos_port_t *port,
     return status;
 }
 
-status_t ota_port_fetch_manifest(void *opaque, const char *url,
-                                        uint8_t *buffer, size_t capacity,
-                                        size_t *out_length)
+status_t ota_port_fetch_manifest(void *opaque,
+                                 const char *url,
+                                 uint8_t *buffer,
+                                 size_t capacity,
+                                 size_t *out_length)
 {
     ota_rtos_port_t *port = opaque;
     ota_network_request_t request;
@@ -189,8 +200,8 @@ status_t ota_port_fetch_manifest(void *opaque, const char *url,
     return status;
 }
 
-status_t ota_port_http_open(void *opaque, const char *url,
-                                   uint32_t *out_content_length)
+status_t
+ota_port_http_open(void *opaque, const char *url, uint32_t *out_content_length)
 {
     ota_rtos_port_t *port = opaque;
     ota_network_request_t request;
@@ -201,14 +212,15 @@ status_t ota_port_http_open(void *opaque, const char *url,
     request.url = url;
     status = submit_ota_network_request(port, &request);
     if (out_content_length != 0) {
-        *out_content_length = status == SYS_OK
-            ? request.content_length : 0u;
+        *out_content_length = status == SYS_OK ? request.content_length : 0u;
     }
     return status;
 }
 
-status_t ota_port_http_read(void *opaque, uint8_t *buffer,
-                                   size_t capacity, size_t *out_length)
+status_t ota_port_http_read(void *opaque,
+                            uint8_t *buffer,
+                            size_t capacity,
+                            size_t *out_length)
 {
     ota_rtos_port_t *port = opaque;
     ota_network_request_t request;
@@ -253,8 +265,10 @@ status_t ota_port_staging_begin(void *opaque, size_t package_size)
     return status;
 }
 
-status_t ota_port_staging_write(void *opaque, uint32_t offset,
-                                       const uint8_t *data, size_t length)
+status_t ota_port_staging_write(void *opaque,
+                                uint32_t offset,
+                                const uint8_t *data,
+                                size_t length)
 {
     ota_rtos_port_t *port = opaque;
     ota_storage_request_t request;
@@ -268,20 +282,27 @@ status_t ota_port_staging_write(void *opaque, uint32_t offset,
 }
 
 status_t ota_port_metadata_load(void *opaque,
-                                       boot_metadata_t *out_metadata,
-                                       app_slot_t *out_copy_slot)
+                                boot_metadata_t *out_metadata,
+                                app_slot_t *out_copy_slot)
 {
     ota_rtos_port_t *port = opaque;
 
-    return boot_meta_load(&port->context->boot_confirmation->store,
-                          out_metadata, out_copy_slot);
+    return boot_meta_load(
+        &port->context->boot_confirmation->store, out_metadata, out_copy_slot);
 }
 
-status_t ota_port_metadata_commit(
-    void *opaque, const boot_metadata_t *current,
-    app_slot_t current_copy_slot, const boot_metadata_t *desired,
-    boot_metadata_t *out_committed, app_slot_t *out_copy_slot)
+status_t ota_port_metadata_commit(void *opaque,
+                                  const boot_meta_commit_request_t *parameters)
 {
+    if (parameters == 0) {
+        return ERR_INVALID_ARG;
+    }
+    const boot_metadata_t *current = parameters->current;
+    app_slot_t current_copy_slot = parameters->current_copy_slot;
+    const boot_metadata_t *desired = parameters->desired;
+    boot_metadata_t *out_committed = parameters->out_committed;
+    app_slot_t *out_copy_slot = parameters->out_copy_slot;
+
     ota_rtos_port_t *port = opaque;
     status_t status;
 
@@ -289,15 +310,17 @@ status_t ota_port_metadata_commit(
     if (status != SYS_OK) {
         return status;
     }
-    status = boot_meta_commit(&port->context->boot_confirmation->store,
-        current, current_copy_slot, desired, out_committed, out_copy_slot);
+    status = boot_meta_commit(
+        &port->context->boot_confirmation->store,
+        &(const boot_meta_commit_request_t){
+            current, current_copy_slot, desired, out_committed, out_copy_slot});
     (void)power_lock_release(PM_LOCK_FLASH_WRITE);
     return status;
 }
 
 status_t ota_port_staging_metadata_commit(void *opaque,
-                                                  const uint8_t *record,
-                                                  size_t record_size)
+                                          const uint8_t *record,
+                                          size_t record_size)
 {
     ota_rtos_port_t *port = opaque;
     ota_storage_request_t request;

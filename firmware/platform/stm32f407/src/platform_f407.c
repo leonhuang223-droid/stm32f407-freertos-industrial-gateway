@@ -24,8 +24,8 @@ static uint32_t planned_sleep_ms;
 
 static void system_clock_config(void)
 {
-    RCC_OscInitTypeDef oscillator = { 0 };
-    RCC_ClkInitTypeDef clocks = { 0 };
+    RCC_OscInitTypeDef oscillator = {0};
+    RCC_ClkInitTypeDef clocks = {0};
 
     __HAL_RCC_PWR_CLK_ENABLE();
     __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
@@ -102,7 +102,8 @@ void platform_f407_pre_sleep(uint32_t *expected_idle_ticks)
         uint32_t requested_ms = *expected_idle_ticks * portTICK_PERIOD_MS;
 
         if (power_manager_prepare_tickless(
-                platform_power, requested_ms,
+                platform_power,
+                requested_ms,
                 watchdog_device_remaining_ms(platform_watchdog),
                 &allowed_ms) != SYS_OK) {
             *expected_idle_ticks = 0u;
@@ -120,12 +121,11 @@ void platform_f407_post_sleep(uint32_t expected_idle_ticks)
     (void)expected_idle_ticks;
 #if defined(FIRMWARE_USE_FREERTOS)
     if (platform_power != 0 && planned_sleep_ms != 0u) {
-        power_wake_reason_t reason =
-            (SCB->ICSR & SCB_ICSR_PENDSTSET_Msk) != 0u
-                ? POWER_WAKE_SYSTICK : POWER_WAKE_INTERRUPT;
+        power_wake_reason_t reason = (SCB->ICSR & SCB_ICSR_PENDSTSET_Msk) != 0u
+                                         ? POWER_WAKE_SYSTICK
+                                         : POWER_WAKE_INTERRUPT;
 
-        power_manager_record_wake(platform_power, planned_sleep_ms,
-                                  reason);
+        power_manager_record_wake(platform_power, planned_sleep_ms, reason);
         planned_sleep_ms = 0u;
     }
 #endif

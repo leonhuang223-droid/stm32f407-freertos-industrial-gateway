@@ -25,9 +25,11 @@ typedef struct {
 
 typedef struct {
     status_t (*init)(sht30_t *device);
-    status_t (*sample)(sht30_t *device, uint32_t now_ms,
+    status_t (*sample)(sht30_t *device,
+                       uint32_t now_ms,
                        gateway_measurement_t *out_measurements,
-                       size_t capacity, size_t *out_count);
+                       size_t capacity,
+                       size_t *out_count);
     status_t (*suspend)(sht30_t *device);
     status_t (*resume)(sht30_t *device);
     status_t (*self_test)(sht30_t *device);
@@ -40,12 +42,14 @@ struct sht30 {
     gateway_device_health_t health;
 };
 
-status_t sht30_construct(sht30_t *device, i2c_bus_t *bus,
-                         const sht30_config_t *config);
+status_t
+sht30_construct(sht30_t *device, i2c_bus_t *bus, const sht30_config_t *config);
 status_t sht30_init(sht30_t *device);
-status_t sht30_sample(sht30_t *device, uint32_t now_ms,
+status_t sht30_sample(sht30_t *device,
+                      uint32_t now_ms,
                       gateway_measurement_t *out_measurements,
-                      size_t capacity, size_t *out_count);
+                      size_t capacity,
+                      size_t *out_count);
 status_t sht30_suspend(sht30_t *device);
 status_t sht30_resume(sht30_t *device);
 status_t sht30_self_test(sht30_t *device);

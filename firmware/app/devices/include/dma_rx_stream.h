@@ -18,8 +18,20 @@ typedef struct {
     volatile uint8_t overflow;
 } dma_rx_stream_t;
 
+static inline int dma_rx_stream_valid(const dma_rx_stream_t *stream)
+{
+    return stream != 0 && stream->dma != 0 && stream->ring != 0 &&
+           stream->dma_capacity != 0u && stream->ring_capacity > 1u &&
+           stream->dma_position <= stream->dma_capacity &&
+           stream->write_position < stream->ring_capacity &&
+           stream->read_position < stream->ring_capacity;
+}
+
 static inline void dma_rx_stream_reset(dma_rx_stream_t *stream)
 {
+    if (stream == 0) {
+        return;
+    }
     stream->dma_position = 0u;
     stream->write_position = 0u;
     stream->read_position = 0u;
@@ -28,7 +40,11 @@ static inline void dma_rx_stream_reset(dma_rx_stream_t *stream)
 
 static inline void dma_rx_stream_publish(dma_rx_stream_t *stream, size_t end)
 {
-    size_t position = stream->dma_position;
+    size_t position;
+    if (!dma_rx_stream_valid(stream)) {
+        return;
+    }
+    position = stream->dma_position;
     if (end > stream->dma_capacity || end == position) {
         return;
     }
@@ -52,15 +68,18 @@ static inline void dma_rx_stream_publish(dma_rx_stream_t *stream, size_t end)
     stream->dma_position = end;
 }
 
-static inline size_t dma_rx_stream_read(dma_rx_stream_t *stream,
-                                        uint8_t *data, size_t capacity)
+static inline size_t
+dma_rx_stream_read(dma_rx_stream_t *stream, uint8_t *data, size_t capacity)
 {
     size_t length = 0u;
+    if (!dma_rx_stream_valid(stream) || data == 0) {
+        return 0u;
+    }
     while (length < capacity &&
            stream->read_position != stream->write_position) {
         data[length++] = stream->ring[stream->read_position];
-        stream->read_position = (stream->read_position + 1u) %
-                                stream->ring_capacity;
+        stream->read_position =
+            (stream->read_position + 1u) % stream->ring_capacity;
     }
     return length;
 }

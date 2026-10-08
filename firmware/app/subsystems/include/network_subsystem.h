@@ -101,9 +101,9 @@ typedef struct {
     network_health_t health;
 } network_subsystem_t;
 
-status_t network_subsystem_construct(
-    network_subsystem_t *subsystem, network_transport_t *transport,
-    const network_subsystem_config_t *config);
+status_t network_subsystem_construct(network_subsystem_t *subsystem,
+                                     network_transport_t *transport,
+                                     const network_subsystem_config_t *config);
 status_t network_subsystem_start(network_subsystem_t *subsystem,
                                  uint32_t now_ms);
 status_t network_subsystem_submit(network_subsystem_t *subsystem,

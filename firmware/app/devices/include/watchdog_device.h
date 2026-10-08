@@ -24,8 +24,7 @@ typedef struct {
 status_t watchdog_device_construct(watchdog_device_t *device,
                                    const watchdog_device_ops_t *ops,
                                    void *context);
-status_t watchdog_device_start(watchdog_device_t *device,
-                               uint32_t timeout_ms);
+status_t watchdog_device_start(watchdog_device_t *device, uint32_t timeout_ms);
 status_t watchdog_device_refresh(watchdog_device_t *device);
 uint32_t watchdog_device_remaining_ms(const watchdog_device_t *device);
 

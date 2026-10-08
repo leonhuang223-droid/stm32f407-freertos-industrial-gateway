@@ -38,6 +38,7 @@ typedef struct {
     uint16_t port;
     char request[HTTP_CLIENT_MAX_REQUEST_LEN];
     uint32_t close_count;
+    status_t close_status;
 } fake_transport_t;
 
 static status_t fake_transport_init(void *context)
@@ -107,7 +108,7 @@ static status_t fake_transport_close(void *context)
         return ERR_INVALID_ARG;
     }
     fake->close_count++;
-    return SYS_OK;
+    return fake->close_status;
 }
 
 static void test_http_client(void)
@@ -150,9 +151,19 @@ static void test_http_client(void)
     EXPECT_TRUE(strstr(fake.request, "GET /fw.bin HTTP/1.1") != 0);
     EXPECT_EQ(1u, fake.close_count);
 
-    EXPECT_EQ(ERR_UNSUPPORTED, http_parse_url(
-        "https://example.com/fw.bin", host, sizeof(host), path,
-        sizeof(path), &port));
+    fake.response_offset = 0u;
+    EXPECT_EQ(SYS_OK, http_open_get(&client, "http://example.com/fw.bin"));
+    fake.close_status = ERR_IO;
+    EXPECT_EQ(ERR_IO, http_close(&client));
+    EXPECT_TRUE(client.connected != 0u);
+    EXPECT_EQ(ERR_IO, http_open_get(&client, "http://newhost/fw.bin"));
+    EXPECT_TRUE(strcmp(fake.host, "example.com") == 0);
+    fake.close_status = SYS_OK;
+    EXPECT_EQ(SYS_OK, http_close(&client));
+    EXPECT_EQ(0u, client.connected);
+
+    EXPECT_EQ(ERR_UNSUPPORTED, http_parse_url("https://example.com/fw.bin",
+    &(const http_url_output_t){ host, sizeof(host), path, sizeof(path), &port }));
     EXPECT_EQ(ERR_UNSUPPORTED, http_parse_header(
         "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n",
         &header));
@@ -242,9 +253,10 @@ static void test_staging(void)
     memset(first, 0x5A, sizeof(first));
     memset(last, 0xA5, sizeof(last));
     memset(metadata, 0x3C, sizeof(metadata));
-    EXPECT_EQ(SYS_OK, storage_media_construct(
-        &media, &ops, &fake, sizeof(fake.bytes),
-        EXTERNAL_FLASH_PAGE_SIZE, EXTERNAL_FLASH_SECTOR_SIZE));
+    EXPECT_EQ(SYS_OK, storage_media_construct(&media,
+    &ops,
+    &fake,
+    &(const storage_media_geometry_t){ sizeof(fake.bytes), EXTERNAL_FLASH_PAGE_SIZE, EXTERNAL_FLASH_SECTOR_SIZE }));
     EXPECT_EQ(SYS_OK, ota_staging_construct(&staging, &media));
     EXPECT_EQ(SYS_OK, ota_staging_begin(&staging, 300u));
     EXPECT_EQ(ERR_INVALID_ARG,
@@ -275,6 +287,8 @@ typedef struct {
     uint8_t staged[512];
     uint8_t staging_metadata[OTA_STAGING_METADATA_WIRE_SIZE];
     uint32_t metadata_commits;
+    uint32_t closes;
+    status_t close_status;
 } fake_ota_port_t;
 
 static status_t manager_fetch(void *context, const char *url,
@@ -319,7 +333,12 @@ static status_t manager_http_read(void *context, uint8_t *buffer,
 
 static status_t manager_http_close(void *context)
 {
-    return context != 0 ? SYS_OK : ERR_INVALID_ARG;
+    fake_ota_port_t *fake = context;
+    if (fake == 0) {
+        return ERR_INVALID_ARG;
+    }
+    fake->closes++;
+    return fake->close_status;
 }
 
 static status_t manager_staging_begin(void *context, size_t package_size)
@@ -354,11 +373,18 @@ static status_t manager_metadata_load(void *context,
     return SYS_OK;
 }
 
-static status_t manager_metadata_commit(
-    void *context, const boot_metadata_t *current,
-    app_slot_t current_copy_slot, const boot_metadata_t *desired,
-    boot_metadata_t *out_committed, app_slot_t *out_copy_slot)
+static status_t manager_metadata_commit(void *context,
+    const boot_meta_commit_request_t *parameters)
 {
+    if (parameters == 0) {
+        return ERR_INVALID_ARG;
+    }
+    const boot_metadata_t *current = parameters->current;
+    app_slot_t current_copy_slot = parameters->current_copy_slot;
+    const boot_metadata_t *desired = parameters->desired;
+    boot_metadata_t *out_committed = parameters->out_committed;
+    app_slot_t *out_copy_slot = parameters->out_copy_slot;
+
     fake_ota_port_t *fake = context;
 
     (void)current_copy_slot;
@@ -463,6 +489,14 @@ static void test_ota_manager(void)
     EXPECT_EQ(SYS_OK, crc32_compute(fake.package,
                                     fake.package_length, &crc));
     build_manager(&manager, &fake, crc);
+    {
+        ota_manifest_t parsed;
+        size_t last = strlen(fake.manifest) - 1u;
+        EXPECT_EQ(SYS_OK, manifest_parse_json(fake.manifest, &parsed));
+        fake.manifest[last] = ',';
+        EXPECT_TRUE(manifest_parse_json(fake.manifest, &parsed) != SYS_OK);
+        fake.manifest[last] = '}';
+    }
     EXPECT_EQ(SYS_OK, ota_manager_check(&manager));
     EXPECT_EQ(SYS_OK, ota_manager_download(&manager));
     EXPECT_TRUE(memcmp(fake.package, fake.staged,
@@ -492,6 +526,22 @@ static void test_ota_manager(void)
     fake.metadata.previous_slot = SLOT_B;
     EXPECT_EQ(SYS_OK, boot_meta_refresh_crc(&fake.metadata));
     EXPECT_EQ(ERR_SLOT_MISMATCH, ota_manager_check(&manager));
+
+    build_manager(&manager, &fake, crc);
+    EXPECT_EQ(SYS_OK, ota_manager_check(&manager));
+    fake.close_status = ERR_IO;
+    EXPECT_EQ(ERR_IO, ota_manager_download(&manager));
+    EXPECT_TRUE(manager.connection_open != 0u);
+    EXPECT_EQ(1u, fake.closes);
+    fake.close_status = SYS_OK;
+    EXPECT_EQ(SYS_OK, ota_manager_check(&manager));
+    EXPECT_EQ(2u, fake.closes);
+    EXPECT_EQ(0u, manager.connection_open);
+    manager.connection_open = 1u;
+    manager.status.state = OTA_DOWNLOADING;
+    EXPECT_EQ(ERR_INVALID_ARG, ota_manager_check(&manager));
+    EXPECT_EQ(2u, fake.closes);
+    EXPECT_TRUE(manager.connection_open != 0u);
 }
 
 int main(void)

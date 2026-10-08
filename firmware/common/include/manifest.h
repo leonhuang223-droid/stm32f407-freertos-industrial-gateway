@@ -25,25 +25,32 @@ extern "C" {
 
 /** OTA manifest parsed from JSON before HTTP package download. */
 typedef struct {
-    uint16_t manifest_version; /**< Manifest schema version. */
+    uint16_t manifest_version;              /**< Manifest schema version. */
     char target_id[MANIFEST_TARGET_ID_LEN]; /**< Expected board target ID. */
-    char version[MANIFEST_VERSION_LEN]; /**< Firmware version string. */
-    uint32_t target_slot; /**< Intended application slot as app_slot_t. */
+    char version[MANIFEST_VERSION_LEN];     /**< Firmware version string. */
+    uint32_t target_slot;  /**< Intended application slot as app_slot_t. */
     uint32_t link_address; /**< Vector table address expected in the image. */
-    uint32_t image_size; /* Total package bytes: header + raw application body. */
+    uint32_t
+        image_size; /* Total package bytes: header + raw application body. */
     uint32_t crc32; /**< CRC32 over the complete header + body package. */
     uint8_t sha256[IMAGE_SHA256_LEN]; /**< SHA256 over the complete package. */
-    char download_url[MANIFEST_DOWNLOAD_URL_LEN]; /**< HTTP URL for package bytes. */
-    char min_bootloader_version[MANIFEST_MIN_BOOTLOADER_VERSION_LEN]; /**< Required bootloader version. */
-    uint32_t force_update; /**< Non-zero allows equal/downgrade version policy. */
-    char release_note[MANIFEST_RELEASE_NOTE_LEN]; /**< Human-readable release summary. */
+    char download_url[MANIFEST_DOWNLOAD_URL_LEN]; /**< HTTP URL for package
+                                                     bytes. */
+    char min_bootloader_version
+        [MANIFEST_MIN_BOOTLOADER_VERSION_LEN]; /**< Required bootloader version.
+                                                */
+    uint32_t
+        force_update; /**< Non-zero allows equal/downgrade version policy. */
+    char release_note[MANIFEST_RELEASE_NOTE_LEN]; /**< Human-readable release
+                                                     summary. */
 } ota_manifest_t;
 
 /** Local firmware identity used to validate an OTA manifest. */
 typedef struct {
-    const char *target_id; /**< Current board target ID. */
+    const char *target_id;       /**< Current board target ID. */
     const char *current_version; /**< Currently running app version. */
-    const char *current_bootloader_version; /**< Installed bootloader version. */
+    const char
+        *current_bootloader_version; /**< Installed bootloader version. */
 } manifest_validate_context_t;
 
 /**
@@ -59,7 +66,8 @@ status_t manifest_parse_json(const char *json, ota_manifest_t *out_manifest);
  * @param context Current device identity.
  * @return SYS_OK when the manifest is applicable to this device.
  */
-status_t manifest_validate(const ota_manifest_t *manifest, const manifest_validate_context_t *context);
+status_t manifest_validate(const ota_manifest_t *manifest,
+                           const manifest_validate_context_t *context);
 
 #ifdef __cplusplus
 }

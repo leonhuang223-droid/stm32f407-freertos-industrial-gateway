@@ -2,8 +2,10 @@
 
 #include <string.h>
 
-static status_t encode_remaining_length(uint32_t value, uint8_t *buffer,
-                                        size_t capacity, size_t *length)
+static status_t encode_remaining_length(uint32_t value,
+                                        uint8_t *buffer,
+                                        size_t capacity,
+                                        size_t *length)
 {
     size_t used = 0u;
 
@@ -27,8 +29,10 @@ static status_t encode_remaining_length(uint32_t value, uint8_t *buffer,
     return SYS_OK;
 }
 
-static status_t append_u16_string(uint8_t *buffer, size_t capacity,
-                                  size_t *offset, const char *value)
+static status_t append_u16_string(uint8_t *buffer,
+                                  size_t capacity,
+                                  size_t *offset,
+                                  const char *value)
 {
     size_t length;
 
@@ -48,7 +52,8 @@ static status_t append_u16_string(uint8_t *buffer, size_t capacity,
 }
 
 status_t mqtt_encode_connect(const mqtt_connect_options_t *options,
-                             uint8_t *buffer, size_t capacity,
+                             uint8_t *buffer,
+                             size_t capacity,
                              size_t *length)
 {
     uint8_t body[512];
@@ -58,9 +63,10 @@ status_t mqtt_encode_connect(const mqtt_connect_options_t *options,
     size_t remaining_length = 0u;
     status_t status;
 
-    if (options == 0 || buffer == 0 || length == 0 ||
-        options->client_id == 0 || options->client_id[0] == '\0' ||
-        (options->password != 0 && options->username == 0)) {
+    if (options == 0 || buffer == 0 || length == 0 || options->client_id == 0 ||
+        options->client_id[0] == '\0' ||
+        (options->password != 0 && options->password[0] != '\0' &&
+         (options->username == 0 || options->username[0] == '\0'))) {
         return ERR_INVALID_ARG;
     }
     status = append_u16_string(body, sizeof(body), &body_length, "MQTT");
@@ -80,21 +86,21 @@ status_t mqtt_encode_connect(const mqtt_connect_options_t *options,
     body[body_length++] = flags;
     body[body_length++] = (uint8_t)(options->keep_alive_seconds >> 8u);
     body[body_length++] = (uint8_t)options->keep_alive_seconds;
-    status = append_u16_string(body, sizeof(body), &body_length,
-                               options->client_id);
+    status =
+        append_u16_string(body, sizeof(body), &body_length, options->client_id);
     if (status == SYS_OK && (flags & 0x80u) != 0u) {
-        status = append_u16_string(body, sizeof(body), &body_length,
-                                   options->username);
+        status = append_u16_string(
+            body, sizeof(body), &body_length, options->username);
     }
     if (status == SYS_OK && (flags & 0x40u) != 0u) {
-        status = append_u16_string(body, sizeof(body), &body_length,
-                                   options->password);
+        status = append_u16_string(
+            body, sizeof(body), &body_length, options->password);
     }
     if (status != SYS_OK) {
         return status;
     }
-    status = encode_remaining_length((uint32_t)body_length, remaining,
-                                     sizeof(remaining), &remaining_length);
+    status = encode_remaining_length(
+        (uint32_t)body_length, remaining, sizeof(remaining), &remaining_length);
     if (status != SYS_OK || capacity < 1u + remaining_length + body_length) {
         return status == SYS_OK ? ERR_NO_MEMORY : status;
     }
@@ -106,12 +112,19 @@ status_t mqtt_encode_connect(const mqtt_connect_options_t *options,
 }
 
 status_t mqtt_encode_publish_qos1(const char *topic,
-                                  const uint8_t *payload,
-                                  size_t payload_length,
-                                  uint16_t packet_id, uint8_t duplicate,
-                                  uint8_t *buffer, size_t capacity,
-                                  size_t *length)
+                                  const mqtt_publish_request_t *parameters)
 {
+    if (parameters == 0) {
+        return ERR_INVALID_ARG;
+    }
+    const uint8_t *payload = parameters->payload;
+    size_t payload_length = parameters->payload_length;
+    uint16_t packet_id = parameters->packet_id;
+    uint8_t duplicate = parameters->duplicate;
+    uint8_t *buffer = parameters->buffer;
+    size_t capacity = parameters->capacity;
+    size_t *length = parameters->length;
+
     uint8_t remaining[4];
     size_t topic_length;
     size_t remaining_bytes = 0u;
@@ -120,20 +133,18 @@ status_t mqtt_encode_publish_qos1(const char *topic,
     status_t status;
 
     if (topic == 0 || topic[0] == '\0' || payload == 0 ||
-        payload_length == 0u || packet_id == 0u || buffer == 0 ||
-        length == 0) {
+        payload_length == 0u || packet_id == 0u || buffer == 0 || length == 0) {
         return ERR_INVALID_ARG;
     }
     topic_length = strlen(topic);
-    if (topic_length > UINT16_MAX || payload_length > UINT32_MAX ||
-        topic_length + payload_length + 4u > MQTT_MAX_REMAINING_LENGTH) {
+    if (topic_length > UINT16_MAX ||
+        payload_length > MQTT_MAX_REMAINING_LENGTH - topic_length - 4u) {
         return ERR_INVALID_ARG;
     }
     remaining_value = (uint32_t)(topic_length + payload_length + 4u);
-    status = encode_remaining_length(remaining_value, remaining,
-                                     sizeof(remaining), &remaining_bytes);
-    if (status != SYS_OK ||
-        capacity < 1u + remaining_bytes + remaining_value) {
+    status = encode_remaining_length(
+        remaining_value, remaining, sizeof(remaining), &remaining_bytes);
+    if (status != SYS_OK || capacity < 1u + remaining_bytes + remaining_value) {
         return status == SYS_OK ? ERR_NO_MEMORY : status;
     }
     buffer[0] = (uint8_t)(0x32u | (duplicate != 0u ? 0x08u : 0u));
@@ -151,8 +162,10 @@ status_t mqtt_encode_publish_qos1(const char *topic,
     return SYS_OK;
 }
 
-static status_t encode_two_byte_packet(uint8_t type, uint8_t *buffer,
-                                       size_t capacity, size_t *length)
+static status_t encode_two_byte_packet(uint8_t type,
+                                       uint8_t *buffer,
+                                       size_t capacity,
+                                       size_t *length)
 {
     if (buffer == 0 || length == 0) {
         return ERR_INVALID_ARG;
@@ -166,20 +179,21 @@ static status_t encode_two_byte_packet(uint8_t type, uint8_t *buffer,
     return SYS_OK;
 }
 
-status_t mqtt_encode_pingreq(uint8_t *buffer, size_t capacity,
-                             size_t *length)
+status_t mqtt_encode_pingreq(uint8_t *buffer, size_t capacity, size_t *length)
 {
     return encode_two_byte_packet(0xc0u, buffer, capacity, length);
 }
 
-status_t mqtt_encode_disconnect(uint8_t *buffer, size_t capacity,
-                                size_t *length)
+status_t
+mqtt_encode_disconnect(uint8_t *buffer, size_t capacity, size_t *length)
 {
     return encode_two_byte_packet(0xe0u, buffer, capacity, length);
 }
 
-static status_t decode_remaining_length(const uint8_t *buffer, size_t length,
-                                        uint32_t *value, size_t *used)
+static status_t decode_remaining_length(const uint8_t *buffer,
+                                        size_t length,
+                                        uint32_t *value,
+                                        size_t *used)
 {
     uint32_t multiplier = 1u;
     uint32_t result = 0u;
@@ -202,7 +216,8 @@ static status_t decode_remaining_length(const uint8_t *buffer, size_t length,
     return length < 4u ? ERR_DEVICE_NOT_READY : ERR_PROTOCOL;
 }
 
-status_t mqtt_decode_packet(const uint8_t *buffer, size_t length,
+status_t mqtt_decode_packet(const uint8_t *buffer,
+                            size_t length,
                             mqtt_packet_view_t *packet,
                             size_t *consumed)
 {
@@ -219,8 +234,8 @@ status_t mqtt_decode_packet(const uint8_t *buffer, size_t length,
     if (length < 2u) {
         return ERR_DEVICE_NOT_READY;
     }
-    status = decode_remaining_length(&buffer[1], length - 1u,
-                                     &remaining_length, &remaining_bytes);
+    status = decode_remaining_length(
+        &buffer[1], length - 1u, &remaining_length, &remaining_bytes);
     if (status != SYS_OK) {
         return status;
     }
@@ -246,8 +261,7 @@ status_t mqtt_decode_packet(const uint8_t *buffer, size_t length,
         if (remaining_length != 2u || packet->flags != 0u) {
             return ERR_PROTOCOL;
         }
-        packet->packet_id = (uint16_t)((uint16_t)payload[0] << 8u) |
-                            payload[1];
+        packet->packet_id = (uint16_t)((uint16_t)payload[0] << 8u) | payload[1];
         if (packet->packet_id == 0u) {
             return ERR_PROTOCOL;
         }

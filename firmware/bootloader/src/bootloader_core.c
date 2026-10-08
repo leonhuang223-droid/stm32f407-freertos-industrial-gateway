@@ -17,18 +17,12 @@ static status_t ensure_ready(void)
 
 static int port_complete(const bootloader_port_t *port)
 {
-    return port != 0 &&
-           port->minimal_init != 0 &&
-           port->get_reset_reason != 0 &&
-           port->validate_slot != 0 &&
-           port->confirm_slot != 0 &&
-           port->validate_staging != 0 &&
-           port->program_inactive_slot != 0 &&
-           port->jump_to_slot != 0 &&
-           port->enter_maintenance != 0 &&
-           port->scan_recovery != 0 &&
-           port->metadata_store.read != 0 &&
-           port->metadata_store.write != 0;
+    return port != 0 && port->minimal_init != 0 &&
+           port->get_reset_reason != 0 && port->validate_slot != 0 &&
+           port->confirm_slot != 0 && port->validate_staging != 0 &&
+           port->program_inactive_slot != 0 && port->jump_to_slot != 0 &&
+           port->enter_maintenance != 0 && port->scan_recovery != 0 &&
+           port->metadata_store.read != 0 && port->metadata_store.write != 0;
 }
 
 static void decision_init(bootloader_decision_t *decision)
@@ -40,7 +34,8 @@ static void decision_init(bootloader_decision_t *decision)
     decision->selected_slot = SLOT_NONE;
 }
 
-static status_t set_maintenance(bootloader_decision_t *decision, status_t reason,
+static status_t set_maintenance(bootloader_decision_t *decision,
+                                status_t reason,
                                 const boot_metadata_t *metadata)
 {
     decision->action = BOOTLOADER_ACTION_MAINTENANCE;
@@ -53,7 +48,8 @@ static status_t set_maintenance(bootloader_decision_t *decision, status_t reason
     return reason;
 }
 
-static status_t set_jump(bootloader_decision_t *decision, app_slot_t slot,
+static status_t set_jump(bootloader_decision_t *decision,
+                         app_slot_t slot,
                          const boot_metadata_t *metadata)
 {
     decision->action = BOOTLOADER_ACTION_JUMP_SLOT;
@@ -64,7 +60,8 @@ static status_t set_jump(bootloader_decision_t *decision, app_slot_t slot,
     return SYS_OK;
 }
 
-static status_t commit_metadata(const boot_metadata_t *current, app_slot_t current_copy_slot,
+static status_t commit_metadata(const boot_metadata_t *current,
+                                app_slot_t current_copy_slot,
                                 const boot_metadata_t *desired,
                                 boot_metadata_t *out_committed,
                                 app_slot_t *out_copy_slot)
@@ -72,8 +69,10 @@ static status_t commit_metadata(const boot_metadata_t *current, app_slot_t curre
     app_slot_t written_slot;
     status_t status;
 
-    status = boot_meta_commit(&boot_port.metadata_store, current, current_copy_slot,
-                              desired, out_committed, &written_slot);
+    status = boot_meta_commit(
+        &boot_port.metadata_store,
+        &(const boot_meta_commit_request_t){
+            current, current_copy_slot, desired, out_committed, &written_slot});
     if (status == SYS_OK && out_copy_slot != 0) {
         *out_copy_slot = written_slot;
     }
@@ -104,11 +103,10 @@ static status_t select_valid_slot(bootloader_decision_t *decision,
     return set_maintenance(decision, status, metadata);
 }
 
-static status_t recover_confirmed_previous(
-    bootloader_decision_t *decision,
-    const boot_metadata_t *metadata,
-    app_slot_t copy_slot,
-    status_t failure_status)
+static status_t recover_confirmed_previous(bootloader_decision_t *decision,
+                                           const boot_metadata_t *metadata,
+                                           app_slot_t copy_slot,
+                                           status_t failure_status)
 {
     boot_meta_recovery_scan_t scan;
     boot_metadata_t recovered;
@@ -128,8 +126,7 @@ static status_t recover_confirmed_previous(
         return set_maintenance(decision, status, metadata);
     }
     status = boot_meta_recover_by_scan(&scan, &recovered);
-    if (status != SYS_OK ||
-        recovered.boot_state != BOOT_STATE_NORMAL ||
+    if (status != SYS_OK || recovered.boot_state != BOOT_STATE_NORMAL ||
         recovered.active_slot != metadata->previous_slot) {
         return set_maintenance(decision, failure_status, metadata);
     }
@@ -139,18 +136,16 @@ static status_t recover_confirmed_previous(
     if (status != SYS_OK) {
         return set_maintenance(decision, status, metadata);
     }
-    status = commit_metadata(
-        metadata, copy_slot, &recovered, &committed, 0);
+    status = commit_metadata(metadata, copy_slot, &recovered, &committed, 0);
     if (status != SYS_OK) {
         return set_maintenance(decision, status, &recovered);
     }
     return set_jump(decision, committed.active_slot, &committed);
 }
 
-static status_t confirm_and_select_normal(
-    bootloader_decision_t *decision,
-    const boot_metadata_t *metadata,
-    app_slot_t copy_slot)
+static status_t confirm_and_select_normal(bootloader_decision_t *decision,
+                                          const boot_metadata_t *metadata,
+                                          app_slot_t copy_slot)
 {
     status_t status;
 
@@ -161,8 +156,7 @@ static status_t confirm_and_select_normal(
             decision, metadata, copy_slot, status);
     }
 
-    status = boot_port.confirm_slot(
-        boot_port.context, metadata->active_slot);
+    status = boot_port.confirm_slot(boot_port.context, metadata->active_slot);
     if (status != SYS_OK) {
         return recover_confirmed_previous(
             decision, metadata, copy_slot, status);
@@ -189,7 +183,8 @@ static status_t mark_rollback_commit_and_select(bootloader_decision_t *decision,
         return set_maintenance(decision, status, &rollback);
     }
 
-    return select_valid_slot(decision, &committed, committed.active_slot, committed.previous_slot);
+    return select_valid_slot(
+        decision, &committed, committed.active_slot, committed.previous_slot);
 }
 
 static status_t handle_pending(bootloader_decision_t *decision,
@@ -204,15 +199,15 @@ static status_t handle_pending(bootloader_decision_t *decision,
     decision->stage = BOOTLOADER_STAGE_VERIFY_STAGING;
     status = boot_port.validate_staging(boot_port.context, metadata);
     if (status != SYS_OK) {
-        return mark_rollback_commit_and_select(decision, metadata, copy_slot,
-                                               BOOT_ROLLBACK_STAGING_INVALID);
+        return mark_rollback_commit_and_select(
+            decision, metadata, copy_slot, BOOT_ROLLBACK_STAGING_INVALID);
     }
 
     decision->stage = BOOTLOADER_STAGE_PROGRAM_INACTIVE;
     status = bootloader_program_inactive_slot(metadata);
     if (status != SYS_OK) {
-        return mark_rollback_commit_and_select(decision, metadata, copy_slot,
-                                               BOOT_ROLLBACK_WRITE_FAILED);
+        return mark_rollback_commit_and_select(
+            decision, metadata, copy_slot, BOOT_ROLLBACK_WRITE_FAILED);
     }
 
     decision->stage = BOOTLOADER_STAGE_SET_TRIAL;
@@ -221,14 +216,16 @@ static status_t handle_pending(bootloader_decision_t *decision,
         return set_maintenance(decision, status, metadata);
     }
 
-    status = commit_metadata(metadata, copy_slot, &trial, &committed, &committed_copy_slot);
+    status = commit_metadata(
+        metadata, copy_slot, &trial, &committed, &committed_copy_slot);
     if (status != SYS_OK) {
         return set_maintenance(decision, status, &trial);
     }
 
     status = bootloader_validate_slot(committed.pending_slot);
     if (status != SYS_OK) {
-        return mark_rollback_commit_and_select(decision, &committed,
+        return mark_rollback_commit_and_select(decision,
+                                               &committed,
                                                committed_copy_slot,
                                                BOOT_ROLLBACK_WRITE_FAILED);
     }
@@ -276,19 +273,22 @@ static status_t handle_trial(bootloader_decision_t *decision,
             return set_maintenance(decision, status, &retry);
         }
 
-        return select_valid_slot(decision, &committed, committed.pending_slot,
+        return select_valid_slot(decision,
+                                 &committed,
+                                 committed.pending_slot,
                                  committed.previous_slot);
     }
 
     if (status == ERR_TIMEOUT) {
-        return mark_rollback_commit_and_select(decision, &observed, copy_slot,
-                                               BOOT_ROLLBACK_ATTEMPT_EXCEEDED);
+        return mark_rollback_commit_and_select(
+            decision, &observed, copy_slot, BOOT_ROLLBACK_ATTEMPT_EXCEEDED);
     }
 
     return set_maintenance(decision, status, &observed);
 }
 
-static status_t recover_metadata(bootloader_decision_t *decision, status_t load_status)
+static status_t recover_metadata(bootloader_decision_t *decision,
+                                 status_t load_status)
 {
     boot_meta_recovery_scan_t scan;
     boot_metadata_t recovered;
@@ -320,7 +320,8 @@ static status_t recover_metadata(bootloader_decision_t *decision, status_t load_
     }
 
     (void)load_status;
-    return select_valid_slot(decision, &committed, committed.active_slot, SLOT_NONE);
+    return select_valid_slot(
+        decision, &committed, committed.active_slot, SLOT_NONE);
 }
 
 status_t bootloader_init(const bootloader_port_t *port)
@@ -372,8 +373,7 @@ status_t bootloader_select_slot(bootloader_decision_t *out_decision)
     switch (metadata.boot_state) {
     case BOOT_STATE_NORMAL:
     case BOOT_STATE_ROLLBACK:
-        return confirm_and_select_normal(
-            out_decision, &metadata, copy_slot);
+        return confirm_and_select_normal(out_decision, &metadata, copy_slot);
 
     case BOOT_STATE_PENDING:
         out_decision->stage = BOOTLOADER_STAGE_CHECK_PENDING;
@@ -451,8 +451,8 @@ status_t bootloader_enter_maintenance(status_t reason)
     return boot_port.enter_maintenance(boot_port.context, reason);
 }
 
-static status_t execute_maintenance(
-    bootloader_decision_t *decision, status_t reason)
+static status_t execute_maintenance(bootloader_decision_t *decision,
+                                    status_t reason)
 {
     boot_metadata_t metadata = decision->metadata;
     status_t maintenance_status;

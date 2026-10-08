@@ -76,9 +76,8 @@ status_t alarm_subsystem_start(alarm_subsystem_t *subsystem)
     return status;
 }
 
-status_t alarm_subsystem_reconfigure(
-    alarm_subsystem_t *subsystem,
-    const gateway_runtime_config_t *config)
+status_t alarm_subsystem_reconfigure(alarm_subsystem_t *subsystem,
+                                     const gateway_runtime_config_t *config)
 {
     alarm_rule_runtime_t rules[GATEWAY_MAX_ALARM_RULES];
     status_t status = SYS_OK;
@@ -102,8 +101,14 @@ status_t alarm_subsystem_reconfigure(
         subsystem->health.last_error = status;
         return status;
     }
-    subsystem->relay->config.safe_state = config->relay_safe_energized != 0u
-        ? RELAY_ENERGIZED : RELAY_DEENERGIZED;
+    status = relay_configure_safe_state(subsystem->relay,
+                                        config->relay_safe_energized != 0u
+                                            ? RELAY_ENERGIZED
+                                            : RELAY_DEENERGIZED);
+    if (status != SYS_OK) {
+        subsystem->health.last_error = status;
+        return status;
+    }
     subsystem->config = *config;
     memcpy(subsystem->rules, rules, sizeof(rules));
     subsystem->health.active_alarms = 0u;
@@ -117,11 +122,12 @@ static int condition_is_active(const alarm_condition_runtime_t *runtime)
            runtime->state == ALARM_STATE_RECOVER_PENDING;
 }
 
-static gateway_alarm_event_t make_event(alarm_subsystem_t *subsystem,
-                                        alarm_condition_runtime_t *runtime,
-                                        const gateway_measurement_t *measurement,
-                                        const condition_input_t *input,
-                                        gateway_alarm_transition_t transition)
+static gateway_alarm_event_t
+make_event(alarm_subsystem_t *subsystem,
+           alarm_condition_runtime_t *runtime,
+           const gateway_measurement_t *measurement,
+           const condition_input_t *input,
+           gateway_alarm_transition_t transition)
 {
     gateway_alarm_event_t event;
 
@@ -144,13 +150,54 @@ static gateway_alarm_event_t make_event(alarm_subsystem_t *subsystem,
     return event;
 }
 
-static status_t update_condition(
-    alarm_subsystem_t *subsystem, alarm_condition_runtime_t *runtime,
-    const gateway_measurement_t *measurement,
-    const gateway_alarm_rule_config_t *config,
-    const condition_input_t *input, gateway_alarm_event_t *events,
-    size_t capacity, size_t *event_count)
+/** Synchronous request; pointed-to buffers remain caller-owned.
+ * @author 兆鸣嵌入式
+ */
+typedef struct {
+    alarm_condition_runtime_t *runtime;
+    const gateway_measurement_t *measurement;
+    const gateway_alarm_rule_config_t *config;
+    const condition_input_t *input;
+    gateway_alarm_event_t *events;
+    size_t capacity;
+    size_t *event_count;
+} alarm_condition_input_t;
+
+static status_t emit_condition_event(alarm_subsystem_t *subsystem,
+                                     const alarm_condition_input_t *parameters,
+                                     gateway_alarm_transition_t transition)
 {
+    alarm_condition_runtime_t *runtime = parameters->runtime;
+    const gateway_measurement_t *measurement = parameters->measurement;
+    const condition_input_t *input = parameters->input;
+    gateway_alarm_event_t *events = parameters->events;
+    size_t capacity = parameters->capacity;
+    size_t *event_count = parameters->event_count;
+
+    if (*event_count >= capacity) {
+        return ERR_NO_MEMORY;
+    }
+    events[*event_count] =
+        make_event(subsystem, runtime, measurement, input, transition);
+    (*event_count)++;
+    if (transition == GATEWAY_ALARM_ENTERED) {
+        subsystem->health.entered_events++;
+    } else {
+        subsystem->health.recovered_events++;
+    }
+    return SYS_OK;
+}
+
+static status_t update_condition(alarm_subsystem_t *subsystem,
+                                 const alarm_condition_input_t *parameters)
+{
+    if (parameters == 0) {
+        return ERR_INVALID_ARG;
+    }
+    alarm_condition_runtime_t *runtime = parameters->runtime;
+    const gateway_alarm_rule_config_t *config = parameters->config;
+    const condition_input_t *input = parameters->input;
+
     gateway_alarm_transition_t transition = GATEWAY_ALARM_ENTERED;
     int emit_event = 0;
 
@@ -158,8 +205,8 @@ static status_t update_condition(
     case ALARM_STATE_NORMAL:
         if (input->condition_active) {
             runtime->assert_count = 1u;
-            runtime->state = config->assert_samples <= 1u
-                ? ALARM_STATE_ACTIVE : ALARM_STATE_PENDING;
+            runtime->state = config->assert_samples <= 1u ? ALARM_STATE_ACTIVE
+                                                          : ALARM_STATE_PENDING;
             emit_event = runtime->state == ALARM_STATE_ACTIVE;
         }
         break;
@@ -179,7 +226,8 @@ static status_t update_condition(
         if (input->recovery_active) {
             runtime->recover_count = 1u;
             runtime->state = config->recover_samples <= 1u
-                ? ALARM_STATE_NORMAL : ALARM_STATE_RECOVER_PENDING;
+                                 ? ALARM_STATE_NORMAL
+                                 : ALARM_STATE_RECOVER_PENDING;
             emit_event = runtime->state == ALARM_STATE_NORMAL;
             transition = GATEWAY_ALARM_RECOVERED;
         }
@@ -206,18 +254,7 @@ static status_t update_condition(
     if (!emit_event) {
         return SYS_OK;
     }
-    if (*event_count >= capacity) {
-        return ERR_NO_MEMORY;
-    }
-    events[*event_count] = make_event(subsystem, runtime, measurement,
-                                      input, transition);
-    (*event_count)++;
-    if (transition == GATEWAY_ALARM_ENTERED) {
-        subsystem->health.entered_events++;
-    } else {
-        subsystem->health.recovered_events++;
-    }
-    return SYS_OK;
+    return emit_condition_event(subsystem, parameters, transition);
 }
 
 static uint32_t count_active(const alarm_subsystem_t *subsystem)
@@ -246,8 +283,7 @@ static status_t apply_relay_policy(alarm_subsystem_t *subsystem)
     for (i = 0u; i < subsystem->config.rule_count; ++i) {
         const alarm_rule_runtime_t *rule = &subsystem->rules[i];
 
-        if (rule->quality_bad != 0u ||
-            condition_is_active(&rule->quality)) {
+        if (rule->quality_bad != 0u || condition_is_active(&rule->quality)) {
             force_safe = 1;
         }
         if (rule->config.relay_on_alarm != 0u &&
@@ -259,8 +295,7 @@ static status_t apply_relay_policy(alarm_subsystem_t *subsystem)
     if (force_safe) {
         status = relay_force_safe(subsystem->relay);
     } else {
-        desired = alarm_requests_relay ? RELAY_ENERGIZED
-                                       : RELAY_DEENERGIZED;
+        desired = alarm_requests_relay ? RELAY_ENERGIZED : RELAY_DEENERGIZED;
         status = relay_set(subsystem->relay, desired);
     }
     if (status != SYS_OK) {
@@ -269,18 +304,93 @@ static status_t apply_relay_policy(alarm_subsystem_t *subsystem)
     return status;
 }
 
-status_t alarm_subsystem_process(
-    alarm_subsystem_t *subsystem, const gateway_measurement_t *measurement,
-    gateway_alarm_event_t *events, size_t capacity, size_t *event_count)
+static status_t evaluate_thresholds(alarm_subsystem_t *subsystem,
+                                    alarm_rule_runtime_t *rule,
+                                    const alarm_condition_input_t *parameters)
+{
+    const gateway_measurement_t *measurement = parameters->measurement;
+    gateway_alarm_event_t *events = parameters->events;
+    size_t capacity = parameters->capacity;
+    size_t *event_count = parameters->event_count;
+    condition_input_t input;
+    status_t first_error = SYS_OK;
+    size_t i;
+
+    if (measurement->quality == GATEWAY_QUALITY_GOOD) {
+        status_t status;
+
+        if (rule->config.high_enabled != 0u) {
+            input.type = GATEWAY_ALARM_HIGH;
+            input.condition_active =
+                measurement->engineering_value >= rule->config.high_threshold;
+            input.recovery_active = (int64_t)measurement->engineering_value <=
+                                    (int64_t)rule->config.high_threshold -
+                                        (int64_t)rule->config.hysteresis;
+            input.threshold = rule->config.high_threshold;
+            status =
+                update_condition(subsystem,
+                                 &(const alarm_condition_input_t){&rule->high,
+                                                                  measurement,
+                                                                  &rule->config,
+                                                                  &input,
+                                                                  events,
+                                                                  capacity,
+                                                                  event_count});
+            if (first_error == SYS_OK && status != SYS_OK) {
+                first_error = status;
+            }
+        }
+        if (rule->config.low_enabled != 0u) {
+            input.type = GATEWAY_ALARM_LOW;
+            input.condition_active =
+                measurement->engineering_value <= rule->config.low_threshold;
+            input.recovery_active = (int64_t)measurement->engineering_value >=
+                                    (int64_t)rule->config.low_threshold +
+                                        (int64_t)rule->config.hysteresis;
+            input.threshold = rule->config.low_threshold;
+            status =
+                update_condition(subsystem,
+                                 &(const alarm_condition_input_t){&rule->low,
+                                                                  measurement,
+                                                                  &rule->config,
+                                                                  &input,
+                                                                  events,
+                                                                  capacity,
+                                                                  event_count});
+            if (first_error == SYS_OK && status != SYS_OK) {
+                first_error = status;
+            }
+        }
+    } else {
+        /* An invalid sample interrupts consecutive threshold observations,
+         * but must never clear an already asserted alarm. */
+        alarm_condition_runtime_t *conditions[] = {&rule->high, &rule->low};
+        for (i = 0u; i < 2u; ++i) {
+            if (conditions[i]->state == ALARM_STATE_PENDING) {
+                conditions[i]->state = ALARM_STATE_NORMAL;
+            } else if (conditions[i]->state == ALARM_STATE_RECOVER_PENDING) {
+                conditions[i]->state = ALARM_STATE_ACTIVE;
+            }
+            conditions[i]->assert_count = 0u;
+            conditions[i]->recover_count = 0u;
+        }
+    }
+    return first_error;
+}
+
+status_t alarm_subsystem_process(alarm_subsystem_t *subsystem,
+                                 const gateway_measurement_t *measurement,
+                                 gateway_alarm_event_t *events,
+                                 size_t capacity,
+                                 size_t *event_count)
 {
     alarm_rule_runtime_t *rule = 0;
     condition_input_t input;
     status_t first_error = SYS_OK;
     unsigned int i;
 
-    if (subsystem == 0 || subsystem->initialized == 0u ||
-        measurement == 0 || events == 0 || capacity == 0u ||
-        event_count == 0) {
+    if (subsystem == 0 || subsystem->initialized == 0u || measurement == 0 ||
+        events == 0 || capacity == 0u || event_count == 0) {
         return ERR_INVALID_ARG;
     }
     *event_count = 0u;
@@ -294,62 +404,35 @@ status_t alarm_subsystem_process(
         return ERR_UNSUPPORTED;
     }
     subsystem->health.processed_measurements++;
-    rule->quality_bad = measurement->quality == GATEWAY_QUALITY_GOOD
-        ? 0u : 1u;
+    rule->quality_bad = measurement->quality == GATEWAY_QUALITY_GOOD ? 0u : 1u;
 
     input.type = GATEWAY_ALARM_DATA_QUALITY;
     input.condition_active = rule->quality_bad != 0u;
     input.recovery_active = rule->quality_bad == 0u;
     input.threshold = 0;
-    first_error = update_condition(subsystem, &rule->quality, measurement,
-                                   &rule->config, &input, events, capacity,
-                                   event_count);
+    first_error =
+        update_condition(subsystem,
+                         &(const alarm_condition_input_t){&rule->quality,
+                                                          measurement,
+                                                          &rule->config,
+                                                          &input,
+                                                          events,
+                                                          capacity,
+                                                          event_count});
 
-    if (measurement->quality == GATEWAY_QUALITY_GOOD) {
-        status_t status;
-
-        if (rule->config.high_enabled != 0u) {
-            input.type = GATEWAY_ALARM_HIGH;
-            input.condition_active = measurement->engineering_value >=
-                                     rule->config.high_threshold;
-            input.recovery_active = (int64_t)measurement->engineering_value <=
-                (int64_t)rule->config.high_threshold -
-                (int64_t)rule->config.hysteresis;
-            input.threshold = rule->config.high_threshold;
-            status = update_condition(subsystem, &rule->high, measurement,
-                                      &rule->config, &input, events, capacity,
-                                      event_count);
-            if (first_error == SYS_OK && status != SYS_OK) {
-                first_error = status;
-            }
-        }
-        if (rule->config.low_enabled != 0u) {
-            input.type = GATEWAY_ALARM_LOW;
-            input.condition_active = measurement->engineering_value <=
-                                     rule->config.low_threshold;
-            input.recovery_active = (int64_t)measurement->engineering_value >=
-                (int64_t)rule->config.low_threshold +
-                (int64_t)rule->config.hysteresis;
-            input.threshold = rule->config.low_threshold;
-            status = update_condition(subsystem, &rule->low, measurement,
-                                      &rule->config, &input, events, capacity,
-                                      event_count);
-            if (first_error == SYS_OK && status != SYS_OK) {
-                first_error = status;
-            }
-        }
-    } else {
-        /* An invalid sample interrupts consecutive threshold observations,
-         * but must never clear an already asserted alarm. */
-        alarm_condition_runtime_t *conditions[] = { &rule->high, &rule->low };
-        for (i = 0u; i < 2u; ++i) {
-            if (conditions[i]->state == ALARM_STATE_PENDING) {
-                conditions[i]->state = ALARM_STATE_NORMAL;
-            } else if (conditions[i]->state == ALARM_STATE_RECOVER_PENDING) {
-                conditions[i]->state = ALARM_STATE_ACTIVE;
-            }
-            conditions[i]->assert_count = 0u;
-            conditions[i]->recover_count = 0u;
+    {
+        status_t status =
+            evaluate_thresholds(subsystem,
+                                rule,
+                                &(const alarm_condition_input_t){0,
+                                                                 measurement,
+                                                                 &rule->config,
+                                                                 &input,
+                                                                 events,
+                                                                 capacity,
+                                                                 event_count});
+        if (first_error == SYS_OK) {
+            first_error = status;
         }
     }
     subsystem->health.active_alarms = count_active(subsystem);
@@ -375,12 +458,9 @@ status_t alarm_subsystem_acknowledge(alarm_subsystem_t *subsystem,
     for (i = 0u; i < subsystem->config.rule_count; ++i) {
         alarm_rule_runtime_t *rule = &subsystem->rules[i];
         alarm_condition_runtime_t *conditions[] = {
-            &rule->high, &rule->low, &rule->quality
-        };
+            &rule->high, &rule->low, &rule->quality};
         gateway_alarm_type_t types[] = {
-            GATEWAY_ALARM_HIGH, GATEWAY_ALARM_LOW,
-            GATEWAY_ALARM_DATA_QUALITY
-        };
+            GATEWAY_ALARM_HIGH, GATEWAY_ALARM_LOW, GATEWAY_ALARM_DATA_QUALITY};
         unsigned int j;
 
         for (j = 0u; j < 3u; ++j) {
@@ -393,9 +473,10 @@ status_t alarm_subsystem_acknowledge(alarm_subsystem_t *subsystem,
                 event->type = types[j];
                 event->transition = GATEWAY_ALARM_ACKNOWLEDGED;
                 event->threshold = types[j] == GATEWAY_ALARM_HIGH
-                    ? rule->config.high_threshold
-                    : (types[j] == GATEWAY_ALARM_LOW
-                       ? rule->config.low_threshold : 0);
+                                       ? rule->config.high_threshold
+                                       : (types[j] == GATEWAY_ALARM_LOW
+                                              ? rule->config.low_threshold
+                                              : 0);
                 return SYS_OK;
             }
         }

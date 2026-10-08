@@ -24,8 +24,7 @@ static status_t process_boot_confirmation(app_ota_task_context_t *context)
     }
     (*context->boot_confirmation_queued) = 0u;
     if (status != SYS_OK && status != ERR_DEVICE_NOT_READY) {
-        xEventGroupSetBits(channels.system_events,
-                           SYSTEM_EVENT_FAULT_ACTIVE);
+        xEventGroupSetBits(channels.system_events, SYSTEM_EVENT_FAULT_ACTIVE);
     }
     return status;
 }
@@ -54,8 +53,8 @@ static status_t prepare_ota_manager(app_ota_task_context_t *context)
     app_slot_t copy_slot;
     status_t status;
 
-    status = boot_meta_load(&context->boot_confirmation->store,
-                            &metadata, &copy_slot);
+    status = boot_meta_load(
+        &context->boot_confirmation->store, &metadata, &copy_slot);
     if (status != SYS_OK) {
         return status;
     }
@@ -91,11 +90,12 @@ static status_t set_ota_network_lease(gateway_network_control_type_t type,
 
     request.type = type;
     request.request_id = request_id;
-    request.deadline_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS) + 5000u;
+    request.deadline_ms =
+        (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS) + 5000u;
     status = app_rtos_submit_network_control(&request);
     if (status == SYS_OK) {
-        status = wait_for_network_control_result(
-            &request, pdMS_TO_TICKS(5000u));
+        status =
+            wait_for_network_control_result(&request, pdMS_TO_TICKS(5000u));
     }
     return status;
 }
@@ -118,8 +118,8 @@ static status_t run_ota_network_phase(app_ota_task_context_t *context,
     if (status == SYS_OK && command->type == GATEWAY_OTA_COMMAND_START) {
         status = ota_manager_download(context->ota);
     }
-    release_status = set_ota_network_lease(
-        GATEWAY_NETWORK_CONTROL_OTA_RELEASE, command->request_id);
+    release_status = set_ota_network_lease(GATEWAY_NETWORK_CONTROL_OTA_RELEASE,
+                                           command->request_id);
     if (status == SYS_OK && release_status != SYS_OK) {
         status = release_status;
     }
@@ -132,7 +132,8 @@ void ota_task(void *argument)
     gateway_ota_command_t command;
 
     for (;;) {
-        if (xQueueReceive(channels.ota_command, &command,
+        if (xQueueReceive(channels.ota_command,
+                          &command,
                           pdMS_TO_TICKS(1000U)) == pdPASS) {
             if (command.type == GATEWAY_OTA_COMMAND_CONFIRM_BOOT) {
                 (void)process_boot_confirmation(context);
@@ -146,8 +147,8 @@ void ota_task(void *argument)
                 }
             } else if (command.type == GATEWAY_OTA_COMMAND_APPLY) {
                 status_t status = context->ota->initialized != 0u
-                    ? ota_manager_commit_pending(context->ota)
-                    : ERR_DEVICE_NOT_READY;
+                                      ? ota_manager_commit_pending(context->ota)
+                                      : ERR_DEVICE_NOT_READY;
 
                 if (status != SYS_OK) {
                     xEventGroupSetBits(channels.system_events,
@@ -157,9 +158,8 @@ void ota_task(void *argument)
                 if (context->ota->initialized != 0u) {
                     (void)ota_manager_abort(context->ota);
                 }
-                (void)set_ota_network_lease(
-                    GATEWAY_NETWORK_CONTROL_OTA_RELEASE,
-                    command.request_id);
+                (void)set_ota_network_lease(GATEWAY_NETWORK_CONTROL_OTA_RELEASE,
+                                            command.request_id);
             }
         }
         app_runtime_mark_alive(GATEWAY_TASK_OTA);
@@ -167,8 +167,7 @@ void ota_task(void *argument)
 }
 
 static status_t wait_for_network_control_result(
-    const gateway_network_control_request_t *request,
-    TickType_t timeout_ticks)
+    const gateway_network_control_request_t *request, TickType_t timeout_ticks)
 {
     TickType_t start = xTaskGetTickCount();
 
@@ -183,7 +182,8 @@ static status_t wait_for_network_control_result(
         if (remaining > pdMS_TO_TICKS(OTA_IO_WAIT_SLICE_MS)) {
             remaining = pdMS_TO_TICKS(OTA_IO_WAIT_SLICE_MS);
         }
-        if (xQueueReceive(channels.network_control_result, &result,
+        if (xQueueReceive(channels.network_control_result,
+                          &result,
                           remaining) != pdPASS) {
             app_runtime_mark_alive(GATEWAY_TASK_OTA);
             continue;

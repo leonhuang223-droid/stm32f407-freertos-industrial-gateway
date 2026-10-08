@@ -9,37 +9,34 @@
 #define ADS1115_CONFIG_COMP_DISABLE 0x0003u
 
 static const int32_t full_scale_uv[] = {
-    6144000, 4096000, 2048000, 1024000, 512000, 256000
-};
+    6144000, 4096000, 2048000, 1024000, 512000, 256000};
 
 static const uint16_t samples_per_second[] = {
-    8u, 16u, 32u, 64u, 128u, 250u, 475u, 860u
-};
+    8u, 16u, 32u, 64u, 128u, 250u, 475u, 860u};
 
 static status_t init_impl(ads1115_t *device);
-static status_t sample_impl(ads1115_t *device, uint32_t now_ms,
+static status_t sample_impl(ads1115_t *device,
+                            uint32_t now_ms,
                             gateway_measurement_t *out_measurement);
 static status_t suspend_impl(ads1115_t *device);
 static status_t resume_impl(ads1115_t *device);
 static status_t self_test_impl(ads1115_t *device);
 
 static const ads1115_ops_t ads1115_ops = {
-    init_impl, sample_impl, suspend_impl, resume_impl, self_test_impl
-};
+    init_impl, sample_impl, suspend_impl, resume_impl, self_test_impl};
 
 static int config_valid(const ads1115_config_t *config)
 {
     return config != 0 && config->address >= 0x48u &&
            config->address <= 0x4Bu && config->channel <= 3u &&
            config->full_scale <= ADS1115_FSR_256_MV &&
-           config->data_rate <= ADS1115_SPS_860 &&
-           config->shunt_ohms != 0u &&
+           config->data_rate <= ADS1115_SPS_860 && config->shunt_ohms != 0u &&
            config->valid_min_microamp < config->valid_max_microamp &&
            config->point_id != 0u;
 }
 
-static status_t read_register(ads1115_t *device, uint8_t reg,
-                              uint16_t *out_value)
+static status_t
+read_register(ads1115_t *device, uint8_t reg, uint16_t *out_value)
 {
     uint8_t data[2];
     status_t status;
@@ -47,8 +44,10 @@ static status_t read_register(ads1115_t *device, uint8_t reg,
     if (out_value == 0) {
         return ERR_INVALID_ARG;
     }
-    status = i2c_bus_write_read(device->bus, device->config.address,
-                                &reg, 1u, data, sizeof(data));
+    status = i2c_bus_write_read(
+        device->bus,
+        device->config.address,
+        &(const i2c_transfer_t){&reg, 1u, data, sizeof(data)});
     if (status == SYS_OK) {
         *out_value = ((uint16_t)data[0] << 8u) | data[1];
     }
@@ -58,16 +57,14 @@ static status_t read_register(ads1115_t *device, uint8_t reg,
 static status_t write_config(ads1115_t *device, uint16_t value)
 {
     uint8_t data[3] = {
-        ADS1115_REG_CONFIG,
-        (uint8_t)(value >> 8u),
-        (uint8_t)value
-    };
+        ADS1115_REG_CONFIG, (uint8_t)(value >> 8u), (uint8_t)value};
 
-    return i2c_bus_write(device->bus, device->config.address,
-                         data, sizeof(data));
+    return i2c_bus_write(
+        device->bus, device->config.address, data, sizeof(data));
 }
 
-static void prepare_measurement(const ads1115_t *device, uint32_t now_ms,
+static void prepare_measurement(const ads1115_t *device,
+                                uint32_t now_ms,
                                 gateway_measurement_t *measurement)
 {
     memset(measurement, 0, sizeof(*measurement));
@@ -79,7 +76,8 @@ static void prepare_measurement(const ads1115_t *device, uint32_t now_ms,
     measurement->error = ERR_DEVICE_NOT_READY;
 }
 
-status_t ads1115_construct(ads1115_t *device, i2c_bus_t *bus,
+status_t ads1115_construct(ads1115_t *device,
+                           i2c_bus_t *bus,
                            const ads1115_config_t *config)
 {
     if (device == 0 || bus == 0 || bus->initialized == 0u ||
@@ -114,7 +112,8 @@ static status_t init_impl(ads1115_t *device)
     return status;
 }
 
-static status_t sample_impl(ads1115_t *device, uint32_t now_ms,
+static status_t sample_impl(ads1115_t *device,
+                            uint32_t now_ms,
                             gateway_measurement_t *out_measurement)
 {
     uint16_t config;
@@ -156,17 +155,17 @@ static status_t sample_impl(ads1115_t *device, uint32_t now_ms,
     }
 
     raw = (int16_t)conversion;
-    microvolts = (int32_t)(((int64_t)raw *
-                            full_scale_uv[device->config.full_scale]) /
-                           32768);
+    microvolts =
+        (int32_t)(((int64_t)raw * full_scale_uv[device->config.full_scale]) /
+                  32768);
     microamps = microvolts / (int32_t)device->config.shunt_ohms;
     out_measurement->raw_value = raw;
     out_measurement->engineering_value = microamps;
     out_measurement->quality =
         microamps < device->config.valid_min_microamp ||
-        microamps > device->config.valid_max_microamp
-        ? GATEWAY_QUALITY_OUT_OF_RANGE
-        : GATEWAY_QUALITY_GOOD;
+                microamps > device->config.valid_max_microamp
+            ? GATEWAY_QUALITY_OUT_OF_RANGE
+            : GATEWAY_QUALITY_GOOD;
     out_measurement->error = SYS_OK;
     gateway_device_health_record_success(&device->health, now_ms);
     return SYS_OK;
@@ -194,34 +193,37 @@ static status_t resume_impl(ads1115_t *device)
 
 status_t ads1115_init(ads1115_t *device)
 {
-    return device != 0 && device->ops != 0
-        ? device->ops->init(device) : ERR_INVALID_ARG;
+    return device != 0 && device->ops != 0 ? device->ops->init(device)
+                                           : ERR_INVALID_ARG;
 }
 
-status_t ads1115_sample(ads1115_t *device, uint32_t now_ms,
+status_t ads1115_sample(ads1115_t *device,
+                        uint32_t now_ms,
                         gateway_measurement_t *out_measurement)
 {
     return device != 0 && device->ops != 0 && out_measurement != 0
-        ? device->ops->sample(device, now_ms, out_measurement)
-        : ERR_INVALID_ARG;
+               ? device->ops->sample(device, now_ms, out_measurement)
+               : ERR_INVALID_ARG;
 }
 
 status_t ads1115_suspend(ads1115_t *device)
 {
     return device != 0 && device->ops != 0 && device->health.initialized != 0u
-        ? device->ops->suspend(device) : ERR_DEVICE_NOT_READY;
+               ? device->ops->suspend(device)
+               : ERR_DEVICE_NOT_READY;
 }
 
 status_t ads1115_resume(ads1115_t *device)
 {
     return device != 0 && device->ops != 0 && device->health.initialized != 0u
-        ? device->ops->resume(device) : ERR_DEVICE_NOT_READY;
+               ? device->ops->resume(device)
+               : ERR_DEVICE_NOT_READY;
 }
 
 status_t ads1115_self_test(ads1115_t *device)
 {
-    return device != 0 && device->ops != 0
-        ? device->ops->self_test(device) : ERR_INVALID_ARG;
+    return device != 0 && device->ops != 0 ? device->ops->self_test(device)
+                                           : ERR_INVALID_ARG;
 }
 
 status_t ads1115_get_health(const ads1115_t *device,

@@ -7,6 +7,8 @@
 
 status_t platform_f407_init(void);
 void platform_f407_panic(void);
+/* FreeRTOS configASSERT callback; int preserves the external ABI. */
+void platform_assert_panic(const char *file, int line);
 void platform_f407_pre_sleep(uint32_t *expected_idle_ticks);
 void platform_f407_post_sleep(uint32_t expected_idle_ticks);
 

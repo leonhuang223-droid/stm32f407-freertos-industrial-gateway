@@ -8,8 +8,7 @@ static int config_valid(const supervisor_config_t *config)
 
     if (config == 0 || config->task_count == 0u ||
         config->task_count > SUPERVISOR_MAX_TASKS ||
-        config->critical_task_mask == 0u ||
-        config->startup_grace_ms == 0u ||
+        config->critical_task_mask == 0u || config->startup_grace_ms == 0u ||
         config->boot_confirm_stable_ms == 0u ||
         (config->critical_task_mask >> config->task_count) != 0u) {
         return 0;
@@ -132,8 +131,7 @@ status_t supervisor_subsystem_process(supervisor_subsystem_t *supervisor,
 void supervisor_subsystem_latch_fault(supervisor_subsystem_t *supervisor,
                                       status_t error)
 {
-    if (supervisor != 0 && supervisor->initialized != 0u &&
-        error != SYS_OK) {
+    if (supervisor != 0 && supervisor->initialized != 0u && error != SYS_OK) {
         supervisor->health.latched_faults++;
         supervisor->health.last_error = error;
         supervisor->health.healthy = 0u;
@@ -145,14 +143,16 @@ uint8_t supervisor_subsystem_boot_confirm_ready(
     const supervisor_subsystem_t *supervisor, uint32_t now_ms)
 {
     return supervisor != 0 && supervisor->health.healthy != 0u &&
-           supervisor->stable_window_active != 0u &&
-           now_ms - supervisor->healthy_since_ms >=
-               supervisor->config.boot_confirm_stable_ms
-        ? 1u : 0u;
+                   supervisor->stable_window_active != 0u &&
+                   now_ms - supervisor->healthy_since_ms >=
+                       supervisor->config.boot_confirm_stable_ms
+               ? 1u
+               : 0u;
 }
 
-status_t supervisor_subsystem_get_health(
-    const supervisor_subsystem_t *supervisor, supervisor_health_t *health)
+status_t
+supervisor_subsystem_get_health(const supervisor_subsystem_t *supervisor,
+                                supervisor_health_t *health)
 {
     if (supervisor == 0 || supervisor->initialized == 0u || health == 0) {
         return ERR_INVALID_ARG;

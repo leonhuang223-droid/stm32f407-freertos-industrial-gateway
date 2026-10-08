@@ -16,8 +16,10 @@ typedef struct {
     status_t (*probe)(lcd_bus_t *bus, uint16_t *controller_id);
     status_t (*init)(lcd_controller_t *controller);
     status_t (*set_window)(lcd_controller_t *controller,
-                           uint16_t x1, uint16_t y1,
-                           uint16_t x2, uint16_t y2);
+                           uint16_t x1,
+                           uint16_t y1,
+                           uint16_t x2,
+                           uint16_t y2);
     status_t (*suspend)(lcd_controller_t *controller);
     status_t (*resume)(lcd_controller_t *controller);
 } lcd_controller_ops_t;
@@ -32,13 +34,25 @@ struct lcd_controller {
     uint8_t suspended;
 };
 
-status_t lcd_controller_detect(lcd_controller_t *controller, lcd_bus_t *bus,
-                               uint16_t width, uint16_t height);
+status_t lcd_controller_detect(lcd_controller_t *controller,
+                               lcd_bus_t *bus,
+                               uint16_t width,
+                               uint16_t height);
 status_t lcd_controller_init(lcd_controller_t *controller);
+/** Synchronous request; pointed-to buffers remain caller-owned.
+ * @author 兆鸣嵌入式
+ */
+typedef struct {
+    uint16_t x1;
+    uint16_t y1;
+    uint16_t x2;
+    uint16_t y2;
+    const uint16_t *pixels;
+    size_t pixel_count;
+} lcd_flush_request_t;
+
 status_t lcd_controller_flush(lcd_controller_t *controller,
-                              uint16_t x1, uint16_t y1,
-                              uint16_t x2, uint16_t y2,
-                              const uint16_t *pixels, size_t pixel_count);
+                              const lcd_flush_request_t *parameters);
 status_t lcd_controller_suspend(lcd_controller_t *controller);
 status_t lcd_controller_resume(lcd_controller_t *controller);
 const char *lcd_controller_name(const lcd_controller_t *controller);

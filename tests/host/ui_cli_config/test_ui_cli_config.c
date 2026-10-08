@@ -15,12 +15,14 @@ typedef struct {
     uint8_t backlight;
     uint8_t suspend_count;
     uint8_t resume_count;
+    status_t suspend_status;
 } fake_display_t;
 
 typedef struct {
     input_sample_t sample;
     uint8_t suspend_count;
     uint8_t resume_count;
+    status_t resume_status;
 } fake_input_t;
 
 typedef struct {
@@ -91,7 +93,7 @@ static status_t fake_display_suspend(void *context)
 
     display->backlight = 0u;
     display->suspend_count++;
-    return SYS_OK;
+    return display->suspend_status;
 }
 
 static status_t fake_display_resume(void *context)
@@ -138,7 +140,7 @@ static status_t fake_input_resume(void *context)
     fake_input_t *input = context;
 
     input->resume_count++;
-    return SYS_OK;
+    return input->resume_status;
 }
 
 static const input_device_ops_t input_ops = {
@@ -412,6 +414,22 @@ static void test_cli_service(void)
     assert(fake.command_count == 1u);
     assert(fake.last_command.id == CLI_COMMAND_MQTT_STATUS);
     assert(strstr(fake.output, "accepted") != 0);
+    {
+        char oversized[CLI_LINE_CAPACITY + 64u];
+        static const char suffix[] =
+            "power standby CONFIRM\nstatus\nstatus\n";
+        memset(oversized, 'x', CLI_LINE_CAPACITY);
+        memcpy(oversized + CLI_LINE_CAPACITY, suffix, sizeof(suffix));
+        fake.input = oversized;
+        fake.input_offset = 0u;
+        while (fake.input_offset < strlen(fake.input)) {
+            assert(cli_subsystem_process(&cli, 0u) == SYS_OK);
+        }
+        /* The suffix belongs to the rejected line; later lines still work. */
+        assert(fake.command_count == 3u);
+        assert(fake.last_command.id == CLI_COMMAND_STATUS);
+        assert(cli.health.overflows == 1u);
+    }
 }
 
 static void test_ui_pages(void)
@@ -469,6 +487,37 @@ static void test_ui_pages(void)
     assert(ui_subsystem_set_power_state(&ui, UI_POWER_ACTIVE) == SYS_OK);
     assert(fake.backlight == 80u);
     assert(fake.resume_count == 1u && fake_input.resume_count == 1u);
+
+    fake.suspend_status = ERR_IO;
+    assert(ui_subsystem_set_power_state(&ui, UI_POWER_SUSPENDED) == ERR_IO);
+    assert(ui_subsystem_get_health(&ui, &health) == SYS_OK);
+    assert(health.power_state == UI_POWER_ACTIVE);
+    assert(input.health.suspended == 0u);
+    fake_input.resume_status = ERR_TIMEOUT;
+    assert(ui_subsystem_set_power_state(&ui, UI_POWER_SUSPENDED) == ERR_TIMEOUT);
+    assert(ui_subsystem_get_health(&ui, &health) == SYS_OK);
+    assert(health.power_state == UI_POWER_SUSPENDED);
+    assert(input.health.suspended != 0u);
+    fake.suspend_status = SYS_OK;
+    fake_input.resume_status = SYS_OK;
+    assert(ui_subsystem_set_power_state(&ui, UI_POWER_ACTIVE) == SYS_OK);
+    assert(input.health.suspended == 0u);
+
+    {
+        const display_area_t area = {0, 0, 1, 1};
+        const uint16_t pixels[4] = {0};
+        uint32_t flushes = fake.flush_count;
+        assert(display_device_flush(&display, &area, pixels, 3u) ==
+               ERR_INVALID_ARG);
+        assert(fake.flush_count == flushes);
+        assert(display_device_construct(&fallback_display, &display_ops,
+                                        &fallback_fake, 32768u, 272u) ==
+               ERR_INVALID_ARG);
+        assert(input_device_construct(&input, &input_ops, &fake_input,
+                                      32768u, 272u) == ERR_INVALID_ARG);
+        fake_input.sample.state = (input_state_t)-1;
+        assert(input_device_read(&input, &fake_input.sample) == ERR_INVALID_ARG);
+    }
 
     assert(display_device_construct(&fallback_display, &display_ops,
                                     &fallback_fake, 480u, 272u) == SYS_OK);

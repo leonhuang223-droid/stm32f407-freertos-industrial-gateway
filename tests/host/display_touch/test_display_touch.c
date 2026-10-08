@@ -112,16 +112,16 @@ static void test_lcd_dispatch_and_lifecycle(void)
     assert(lcd_controller_init(&controller) == SYS_OK);
     assert(command_seen(&mock, 0x11u));
     assert(command_seen(&mock, 0x29u));
-    assert(lcd_controller_flush(&controller, 10u, 20u, 11u, 21u,
-                                pixels, 4u) == SYS_OK);
+    assert(lcd_controller_flush(&controller,
+    &(const lcd_flush_request_t){ 10u, 20u, 11u, 21u, pixels, 4u }) == SYS_OK);
     assert(mock.pixels_written == 4u);
     assert(command_seen(&mock, 0x2Au));
     assert(command_seen(&mock, 0x2Bu));
     assert(command_seen(&mock, 0x2Cu));
-    assert(lcd_controller_flush(&controller, 799u, 0u, 800u, 0u,
-                                pixels, 2u) == ERR_INVALID_ARG);
-    assert(lcd_controller_flush(&controller, 0u, 0u, 1u, 1u,
-                                pixels, 3u) == ERR_INVALID_ARG);
+    assert(lcd_controller_flush(&controller,
+    &(const lcd_flush_request_t){ 799u, 0u, 800u, 0u, pixels, 2u }) == ERR_INVALID_ARG);
+    assert(lcd_controller_flush(&controller,
+    &(const lcd_flush_request_t){ 0u, 0u, 1u, 1u, pixels, 3u }) == ERR_INVALID_ARG);
     assert(lcd_controller_suspend(&controller) == SYS_OK);
     assert(controller.suspended == 1u);
     assert(lcd_controller_resume(&controller) == SYS_OK);
@@ -192,11 +192,18 @@ static status_t gt_read(void *opaque, uint8_t address,
     return ERR_UNSUPPORTED;
 }
 
-static status_t gt_write_read(void *opaque, uint8_t address,
-                              const uint8_t *write_data,
-                              size_t write_length, uint8_t *read_data,
-                              size_t read_length)
+static status_t gt_write_read(void *opaque,
+    uint8_t address,
+    const i2c_transfer_t *parameters)
 {
+    if (parameters == 0) {
+        return ERR_INVALID_ARG;
+    }
+    const uint8_t *write_data = parameters->write_data;
+    size_t write_length = parameters->write_length;
+    uint8_t *read_data = parameters->read_data;
+    size_t read_length = parameters->read_length;
+
     gt_mock_t *mock = opaque;
     uint16_t reg;
 

@@ -12,11 +12,12 @@
 #define F407_CCM_BASE 0x10000000u
 #define F407_CCM_END 0x10010000u
 
-typedef char fault_record_fits_backup_registers[
-    sizeof(fault_record_t) <= F407_RTC_BACKUP_REGISTER_COUNT * sizeof(uint32_t)
-        ? 1 : -1];
-typedef char fault_record_is_word_aligned[
-    sizeof(fault_record_t) % sizeof(uint32_t) == 0u ? 1 : -1];
+typedef char fault_record_fits_backup_registers
+    [sizeof(fault_record_t) <= F407_RTC_BACKUP_REGISTER_COUNT * sizeof(uint32_t)
+         ? 1
+         : -1];
+typedef char fault_record_is_word_aligned
+    [sizeof(fault_record_t) % sizeof(uint32_t) == 0u ? 1 : -1];
 
 static volatile uint32_t active_task_token;
 
@@ -73,8 +74,8 @@ static uint32_t next_sequence(void)
     fault_record_t previous;
 
     read_backup_words(&previous);
-    return fault_record_validate(&previous) == SYS_OK
-        ? previous.sequence + 1u : 1u;
+    return fault_record_validate(&previous) == SYS_OK ? previous.sequence + 1u
+                                                      : 1u;
 }
 
 static uint8_t stack_frame_is_readable(const uint32_t *stack_frame)
@@ -84,7 +85,9 @@ static uint8_t stack_frame_is_readable(const uint32_t *stack_frame)
 
     return ((start >= F407_SRAM_BASE && end <= F407_SRAM_END) ||
             (start >= F407_CCM_BASE && end <= F407_CCM_END)) &&
-           end >= start ? 1u : 0u;
+                   end >= start
+               ? 1u
+               : 0u;
 }
 
 status_t f407_fault_record_load(fault_record_t *record)
@@ -93,8 +96,7 @@ status_t f407_fault_record_load(fault_record_t *record)
         return ERR_INVALID_ARG;
     }
     read_backup_words(record);
-    return record->magic == FAULT_RECORD_MAGIC
-        ? SYS_OK : ERR_DEVICE_NOT_READY;
+    return record->magic == FAULT_RECORD_MAGIC ? SYS_OK : ERR_DEVICE_NOT_READY;
 }
 
 status_t f407_fault_record_clear(void)
@@ -158,7 +160,7 @@ void f407_fault_capture_exception(const uint32_t *stack_frame,
 
 void f407_fault_inject_hardfault(void)
 {
-    __asm volatile ("udf #0");
+    __asm volatile("udf #0");
     for (;;) {
     }
 }

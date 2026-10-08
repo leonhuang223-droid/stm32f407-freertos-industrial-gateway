@@ -24,8 +24,10 @@ extern "C" {
  * @param length Number of bytes requested.
  * @return SYS_OK only when all requested bytes were read.
  */
-typedef status_t (*image_verify_read_fn)(void *context, uint32_t offset,
-                                         uint8_t *buffer, size_t length);
+typedef status_t (*image_verify_read_fn)(void *context,
+                                         uint32_t offset,
+                                         uint8_t *buffer,
+                                         size_t length);
 
 /**
  * @brief Validate image header magic, version, slot, sizes, and state fields.
@@ -39,7 +41,8 @@ status_t image_verify_header(const image_header_t *header);
  * @param expected_slot Slot selected by boot metadata or manifest.
  * @return SYS_OK when the slot binding matches.
  */
-status_t image_verify_slot_binding(const image_header_t *header, app_slot_t expected_slot);
+status_t image_verify_slot_binding(const image_header_t *header,
+                                   app_slot_t expected_slot);
 /**
  * @brief Verify CRC32 over the image body at header->image_offset.
  * @param header Valid image header.
@@ -49,8 +52,11 @@ status_t image_verify_slot_binding(const image_header_t *header, app_slot_t expe
  * @param scratch_size Size of scratch in bytes.
  * @return SYS_OK when the computed CRC matches the header.
  */
-status_t image_verify_crc32(const image_header_t *header, image_verify_read_fn read_fn,
-                            void *context, uint8_t *scratch, size_t scratch_size);
+status_t image_verify_crc32(const image_header_t *header,
+                            image_verify_read_fn read_fn,
+                            void *context,
+                            uint8_t *scratch,
+                            size_t scratch_size);
 /**
  * @brief Verify SHA256 over the image body at header->image_offset.
  * @param header Valid image header.
@@ -60,39 +66,45 @@ status_t image_verify_crc32(const image_header_t *header, image_verify_read_fn r
  * @param scratch_size Size of scratch in bytes.
  * @return SYS_OK when the computed digest matches the header.
  */
-status_t image_verify_sha256(const image_header_t *header, image_verify_read_fn read_fn,
-                             void *context, uint8_t *scratch, size_t scratch_size);
+status_t image_verify_sha256(const image_header_t *header,
+                             image_verify_read_fn read_fn,
+                             void *context,
+                             uint8_t *scratch,
+                             size_t scratch_size);
+/** Synchronous request; pointed-to buffers remain caller-owned.
+ * @author 兆鸣嵌入式
+ */
+typedef struct {
+    uint32_t reader_offset;
+    image_verify_read_fn read_fn;
+    void *context;
+    uint8_t *scratch;
+    size_t scratch_size;
+} image_body_check_t;
+
 /**
  * @brief Verify CRC32 over the image body at an explicit reader offset.
  * @param header Valid image header.
- * @param reader_offset Offset of the raw body in the reader's address space.
- * @param read_fn Body reader.
- * @param context Reader context.
- * @param scratch Temporary buffer for streaming reads.
- * @param scratch_size Size of scratch in bytes.
+ * @param parameters Body offset, synchronous reader, context and scratch.
  * @return SYS_OK when the computed CRC matches the header.
  */
-status_t image_verify_crc32_at(const image_header_t *header, uint32_t reader_offset,
-                               image_verify_read_fn read_fn, void *context,
-                               uint8_t *scratch, size_t scratch_size);
+status_t image_verify_crc32_at(const image_header_t *header,
+                               const image_body_check_t *parameters);
 /**
  * @brief Verify SHA256 over the image body at an explicit reader offset.
  * @param header Valid image header.
- * @param reader_offset Offset of the raw body in the reader's address space.
- * @param read_fn Body reader.
- * @param context Reader context.
- * @param scratch Temporary buffer for streaming reads.
- * @param scratch_size Size of scratch in bytes.
+ * @param parameters Body offset, synchronous reader, context and scratch.
  * @return SYS_OK when the computed digest matches the header.
  */
-status_t image_verify_sha256_at(const image_header_t *header, uint32_t reader_offset,
-                                image_verify_read_fn read_fn, void *context,
-                                uint8_t *scratch, size_t scratch_size);
+status_t image_verify_sha256_at(const image_header_t *header,
+                                const image_body_check_t *parameters);
 /**
  * @brief Validate initial MSP and Reset_Handler addresses in a vector table.
- * @param header Header whose link address defines the expected slot vector base.
+ * @param header Header whose link address defines the expected slot vector
+ * base.
  * @param expected_slot Slot selected by boot policy.
- * @param reader_offset Offset of the vector table in the reader's address space.
+ * @param reader_offset Offset of the vector table in the reader's address
+ * space.
  * @param read_fn Body reader.
  * @param context Reader context.
  * @return SYS_OK when the vector table points inside RAM/slot bounds.

@@ -568,9 +568,10 @@ static int test_storage_persistence(void)
     }
     memset(fake.bytes, 0xff, fake.size);
     EXPECT_STATUS(SYS_OK, external_flash_layout_validate());
-    EXPECT_STATUS(SYS_OK, storage_media_construct(
-        &media, &media_ops, &fake, EXTERNAL_FLASH_TOTAL_SIZE,
-        EXTERNAL_FLASH_PAGE_SIZE, EXTERNAL_FLASH_SECTOR_SIZE));
+    EXPECT_STATUS(SYS_OK, storage_media_construct(&media,
+    &media_ops,
+    &fake,
+    &(const storage_media_geometry_t){ EXTERNAL_FLASH_TOTAL_SIZE, EXTERNAL_FLASH_PAGE_SIZE, EXTERNAL_FLASH_SECTOR_SIZE }));
     EXPECT_STATUS(SYS_OK, storage_subsystem_construct(&storage, &media,
                                                        &config));
     EXPECT_STATUS(SYS_OK, storage_subsystem_start(&storage));

@@ -1,5 +1,6 @@
 #include "gt911.h"
 
+#include <limits.h>
 #include <string.h>
 
 #define GT911_REG_COMMAND 0x8040u
@@ -9,20 +10,22 @@
 #define GT911_REG_FIRST_POINT 0x814Fu
 #define GT911_COMMAND_SLEEP 0x05u
 
-static status_t read_register(gt911_t *device, uint16_t reg,
-                              uint8_t *data, size_t length)
+static status_t
+read_register(gt911_t *device, uint16_t reg, uint8_t *data, size_t length)
 {
-    uint8_t address_bytes[2] = {
-        (uint8_t)(reg >> 8u), (uint8_t)(reg & 0xFFu)
-    };
+    uint8_t address_bytes[2] = {(uint8_t)(reg >> 8u), (uint8_t)(reg & 0xFFu)};
 
-    return i2c_bus_write_read(device->bus, device->config.address,
-                              address_bytes, sizeof(address_bytes),
-                              data, length);
+    return i2c_bus_write_read(
+        device->bus,
+        device->config.address,
+        &(const i2c_transfer_t){
+            address_bytes, sizeof(address_bytes), data, length});
 }
 
-static status_t write_register(gt911_t *device, uint16_t reg,
-                               const uint8_t *data, size_t length)
+static status_t write_register(gt911_t *device,
+                               uint16_t reg,
+                               const uint8_t *data,
+                               size_t length)
 {
     uint8_t buffer[3];
 
@@ -32,8 +35,8 @@ static status_t write_register(gt911_t *device, uint16_t reg,
     buffer[0] = (uint8_t)(reg >> 8u);
     buffer[1] = (uint8_t)(reg & 0xFFu);
     buffer[2] = data[0];
-    return i2c_bus_write(device->bus, device->config.address,
-                         buffer, sizeof(buffer));
+    return i2c_bus_write(
+        device->bus, device->config.address, buffer, sizeof(buffer));
 }
 
 static status_t clear_status(gt911_t *device)
@@ -44,8 +47,10 @@ static status_t clear_status(gt911_t *device)
 }
 
 static status_t transform_point(const gt911_t *device,
-                                uint16_t raw_x, uint16_t raw_y,
-                                int16_t *logical_x, int16_t *logical_y)
+                                uint16_t raw_x,
+                                uint16_t raw_y,
+                                int16_t *logical_x,
+                                int16_t *logical_y)
 {
     uint32_t x = raw_x;
     uint32_t y = raw_y;
@@ -83,13 +88,17 @@ static status_t transform_point(const gt911_t *device,
     return SYS_OK;
 }
 
-status_t gt911_construct(gt911_t *device, i2c_bus_t *bus,
-                         const gt911_io_ops_t *io_ops, void *io_context,
+status_t gt911_construct(gt911_t *device,
+                         i2c_bus_t *bus,
+                         const gt911_io_ops_t *io_ops,
+                         void *io_context,
                          const gt911_config_t *config)
 {
-    if (device == 0 || bus == 0 || io_ops == 0 ||
-        io_ops->select_address == 0 || io_ops->wake == 0 || config == 0 ||
-        config->logical_width == 0u || config->logical_height == 0u ||
+    if (device == 0 || bus == 0 || io_ops == 0 || io_ops->select_address == 0 ||
+        io_ops->wake == 0 || config == 0 || config->logical_width == 0u ||
+        config->logical_height == 0u || config->logical_width > INT16_MAX ||
+        config->logical_height > INT16_MAX || config->swap_xy > 1u ||
+        config->invert_x > 1u || config->invert_y > 1u ||
         (config->address != GT911_DEFAULT_ADDRESS &&
          config->address != 0x14u)) {
         return ERR_INVALID_ARG;
@@ -113,27 +122,26 @@ status_t gt911_init(gt911_t *device)
         return ERR_INVALID_ARG;
     }
     status = device->io_ops->select_address(device->io_context,
-                                             device->config.address);
+                                            device->config.address);
     if (status == SYS_OK) {
-        status = read_register(device, GT911_REG_PRODUCT_ID,
-                               product_id, sizeof(product_id));
+        status = read_register(
+            device, GT911_REG_PRODUCT_ID, product_id, sizeof(product_id));
     }
-    if (status == SYS_OK &&
-        !(product_id[0] == '9' && product_id[1] == '1' &&
-          product_id[2] == '1')) {
+    if (status == SYS_OK && !(product_id[0] == '9' && product_id[1] == '1' &&
+                              product_id[2] == '1')) {
         status = ERR_UNSUPPORTED;
     }
     if (status == SYS_OK) {
-        status = read_register(device, GT911_REG_X_OUTPUT_MAX,
-                               resolution, sizeof(resolution));
+        status = read_register(
+            device, GT911_REG_X_OUTPUT_MAX, resolution, sizeof(resolution));
     }
     if (status != SYS_OK) {
         return status;
     }
-    device->panel_width = (uint16_t)(resolution[0] |
-                                      ((uint16_t)resolution[1] << 8u));
-    device->panel_height = (uint16_t)(resolution[2] |
-                                       ((uint16_t)resolution[3] << 8u));
+    device->panel_width =
+        (uint16_t)(resolution[0] | ((uint16_t)resolution[1] << 8u));
+    device->panel_height =
+        (uint16_t)(resolution[2] | ((uint16_t)resolution[3] << 8u));
     if (device->panel_width == 0u || device->panel_height == 0u) {
         return ERR_PROTOCOL;
     }
@@ -174,15 +182,16 @@ status_t gt911_read(gt911_t *device, input_sample_t *sample)
         *sample = device->last_sample;
         return status;
     }
-    status = read_register(device, GT911_REG_FIRST_POINT,
-                           point, sizeof(point));
+    status = read_register(device, GT911_REG_FIRST_POINT, point, sizeof(point));
     if (status == SYS_OK) {
-        const uint16_t raw_x = (uint16_t)(point[1] |
-                                          ((uint16_t)point[2] << 8u));
-        const uint16_t raw_y = (uint16_t)(point[3] |
-                                          ((uint16_t)point[4] << 8u));
+        const uint16_t raw_x =
+            (uint16_t)(point[1] | ((uint16_t)point[2] << 8u));
+        const uint16_t raw_y =
+            (uint16_t)(point[3] | ((uint16_t)point[4] << 8u));
 
-        status = transform_point(device, raw_x, raw_y,
+        status = transform_point(device,
+                                 raw_x,
+                                 raw_y,
                                  &device->last_sample.x,
                                  &device->last_sample.y);
     }

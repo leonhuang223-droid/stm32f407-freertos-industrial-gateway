@@ -218,20 +218,22 @@ typedef struct {
 } app_context_t;
 
 status_t app_context_init(app_context_t *context);
-status_t app_context_configure_acquisition(
-    app_context_t *context, const app_acquisition_config_t *config);
-status_t app_context_configure_fieldbus(
-    app_context_t *context, const app_fieldbus_config_t *config);
+status_t
+app_context_configure_acquisition(app_context_t *context,
+                                  const app_acquisition_config_t *config);
+status_t app_context_configure_fieldbus(app_context_t *context,
+                                        const app_fieldbus_config_t *config);
 status_t app_context_configure_control_storage(
     app_context_t *context, const app_control_storage_config_t *config);
-status_t app_context_configure_network(
-    app_context_t *context, const app_network_config_t *config);
+status_t app_context_configure_network(app_context_t *context,
+                                       const app_network_config_t *config);
 status_t app_context_configure_ui(app_context_t *context,
                                   const app_ui_config_t *config);
 status_t app_context_configure_cli(app_context_t *context,
                                    const app_cli_config_t *config);
-status_t app_context_configure_reliability(
-    app_context_t *context, const app_reliability_config_t *config);
+status_t
+app_context_configure_reliability(app_context_t *context,
+                                  const app_reliability_config_t *config);
 void app_context_mark_alive(app_context_t *context, gateway_task_id_t task);
 
 #endif

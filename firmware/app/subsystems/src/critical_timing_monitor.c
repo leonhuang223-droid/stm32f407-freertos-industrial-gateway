@@ -2,8 +2,8 @@
 
 #include <limits.h>
 
-status_t critical_timing_monitor_enter(
-    critical_timing_monitor_t *monitor, uint32_t counter)
+status_t critical_timing_monitor_enter(critical_timing_monitor_t *monitor,
+                                       uint32_t counter)
 {
     if (monitor == 0) {
         return ERR_INVALID_ARG;
@@ -23,8 +23,8 @@ status_t critical_timing_monitor_enter(
     return SYS_OK;
 }
 
-status_t critical_timing_monitor_exit(
-    critical_timing_monitor_t *monitor, uint32_t counter)
+status_t critical_timing_monitor_exit(critical_timing_monitor_t *monitor,
+                                      uint32_t counter)
 {
     uint32_t elapsed;
 

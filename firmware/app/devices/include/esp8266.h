@@ -13,14 +13,20 @@
 
 typedef struct {
     status_t (*init)(void *context);
-    status_t (*write)(void *context, const uint8_t *data, size_t length,
+    status_t (*write)(void *context,
+                      const uint8_t *data,
+                      size_t length,
                       uint32_t timeout_ms);
-    status_t (*read)(void *context, uint8_t *data, size_t capacity,
-                     size_t *length, uint32_t timeout_ms);
+    status_t (*read)(void *context,
+                     uint8_t *data,
+                     size_t capacity,
+                     size_t *length,
+                     uint32_t timeout_ms);
     status_t (*flush)(void *context);
     status_t (*suspend)(void *context);
     status_t (*resume)(void *context);
-    /* Optional monotonic clock, used to keep fragmented reads on one deadline. */
+    /* Optional monotonic clock, used to keep fragmented reads on one deadline.
+     */
     uint32_t (*now_ms)(void *context);
 } esp8266_serial_ops_t;
 
@@ -72,18 +78,19 @@ status_t esp8266_construct(esp8266_t *device,
                            void *serial_context,
                            const esp8266_config_t *config);
 status_t esp8266_init(esp8266_t *device);
-status_t esp8266_tcp_connect(esp8266_t *device, const char *host,
-                             uint16_t port);
-status_t esp8266_tcp_send(esp8266_t *device, const uint8_t *data,
-                          size_t length);
-status_t esp8266_tcp_receive(esp8266_t *device, uint8_t *data,
-                             size_t capacity, size_t *length,
+status_t
+esp8266_tcp_connect(esp8266_t *device, const char *host, uint16_t port);
+status_t
+esp8266_tcp_send(esp8266_t *device, const uint8_t *data, size_t length);
+status_t esp8266_tcp_receive(esp8266_t *device,
+                             uint8_t *data,
+                             size_t capacity,
+                             size_t *length,
                              uint32_t timeout_ms);
 status_t esp8266_tcp_close(esp8266_t *device);
 status_t esp8266_suspend(esp8266_t *device);
 status_t esp8266_resume(esp8266_t *device);
-status_t esp8266_get_health(const esp8266_t *device,
-                            esp8266_health_t *health);
+status_t esp8266_get_health(const esp8266_t *device, esp8266_health_t *health);
 const network_transport_ops_t *esp8266_network_transport_ops(void);
 const network_connect_step_ops_t *esp8266_connect_step_ops(void);
 

@@ -5,8 +5,8 @@
 static status_t validate_device(const gateway_device_t *device)
 {
     return device != 0 && device->ops != 0 && device->name != 0
-        ? SYS_OK
-        : ERR_INVALID_ARG;
+               ? SYS_OK
+               : ERR_INVALID_ARG;
 }
 
 status_t gateway_device_init(gateway_device_t *device)

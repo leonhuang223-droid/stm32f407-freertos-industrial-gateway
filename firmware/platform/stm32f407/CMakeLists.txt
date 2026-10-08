@@ -98,6 +98,8 @@ target_include_directories(f407_ota_portable_compile PRIVATE
 )
 target_compile_definitions(f407_ota_portable_compile PRIVATE STM32F407xx)
 target_compile_options(f407_ota_portable_compile PRIVATE -Wall -Wextra -Werror)
+target_compile_options(f407_ota_portable_compile PRIVATE
+    -Wvla -Wshadow -Wformat=2 -Wstrict-prototypes -Wmissing-prototypes)
 
 function(add_stm32f407_image TARGET_NAME)
     set(OPTIONS USE_FREERTOS)
@@ -266,6 +268,17 @@ function(add_stm32f407_image TARGET_NAME)
         target_compile_definitions(${TARGET_NAME} PRIVATE
             FIRMWARE_BOOTLOADER=1)
     endif()
+
+    get_target_property(IMAGE_SOURCES ${TARGET_NAME} SOURCES)
+    foreach(IMAGE_SOURCE IN LISTS IMAGE_SOURCES)
+        if(IMAGE_SOURCE MATCHES "\\.c$" AND
+           NOT IMAGE_SOURCE MATCHES "/cubemx/")
+            set_property(SOURCE "${IMAGE_SOURCE}" PROPERTY
+                COMPILE_OPTIONS
+                -Wvla -Wshadow -Wformat=2
+                -Wstrict-prototypes -Wmissing-prototypes)
+        endif()
+    endforeach()
 
     add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
         COMMAND "${CMAKE_OBJCOPY}" -O binary

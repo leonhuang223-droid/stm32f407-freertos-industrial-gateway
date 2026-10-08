@@ -176,3 +176,12 @@ target_link_libraries(gateway_architecture PUBLIC
     ui_cli_stack
 )
 target_compile_options(gateway_architecture PRIVATE -Wall -Wextra -Werror)
+
+# Keep owned interfaces strict without changing vendor compilation policy.
+foreach(OWNED_TARGET common sensor_stack display_touch_stack fieldbus_stack
+        control_storage_stack network_stack ota_update_stack ui_cli_stack
+        gateway_architecture)
+    target_compile_options(${OWNED_TARGET} PRIVATE
+        -Wall -Wextra -Werror -Wvla -Wshadow -Wformat=2
+        -Wstrict-prototypes -Wmissing-prototypes)
+endforeach()

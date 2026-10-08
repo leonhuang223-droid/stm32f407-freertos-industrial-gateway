@@ -34,13 +34,18 @@ typedef struct {
 } fake_rs485_t;
 
 static status_t fake_rs485_exchange(void *context,
-                                    const uint8_t *request,
-                                    size_t request_length,
-                                    uint8_t *response,
-                                    size_t response_capacity,
-                                    size_t *response_length,
-                                    uint32_t timeout_ms)
+    const rs485_transfer_t *parameters,
+    uint32_t timeout_ms)
 {
+    if (parameters == 0) {
+        return ERR_INVALID_ARG;
+    }
+    const uint8_t *request = parameters->request;
+    size_t request_length = parameters->request_length;
+    uint8_t *response = parameters->response;
+    size_t response_capacity = parameters->response_capacity;
+    size_t *response_length = parameters->response_length;
+
     fake_rs485_t *fake = context;
     status_t status = SYS_OK;
 
@@ -323,8 +328,8 @@ static void test_can_protocol_and_fieldbus_recovery(void)
     EXPECT_EQ(SYS_OK, fieldbus_subsystem_start(&fieldbus));
     fake_can.rx_frames[0] = frame;
     fake_can.rx_count = 1u;
-    EXPECT_EQ(SYS_OK, fieldbus_subsystem_process_can(
-        &fieldbus, CAN_BUS_EVENT_RX, 6000u, received, 2u, &count));
+    EXPECT_EQ(SYS_OK, fieldbus_subsystem_process_can(&fieldbus,
+    &(const fieldbus_can_process_t){ CAN_BUS_EVENT_RX, 6000u, received, 2u, &count }));
     EXPECT_EQ(1u, count);
     EXPECT_EQ(GATEWAY_SOURCE_CAN, received[0].source);
 
@@ -333,13 +338,13 @@ static void test_can_protocol_and_fieldbus_recovery(void)
     EXPECT_EQ(0x101u, fake_can.last_tx.id);
 
     fake_can.state = CAN_BUS_OFF;
-    EXPECT_EQ(ERR_BUS_OFF, fieldbus_subsystem_process_can(
-        &fieldbus, CAN_BUS_EVENT_ERROR, 7000u, received, 2u, &count));
+    EXPECT_EQ(ERR_BUS_OFF, fieldbus_subsystem_process_can(&fieldbus,
+    &(const fieldbus_can_process_t){ CAN_BUS_EVENT_ERROR, 7000u, received, 2u, &count }));
     EXPECT_EQ(1u, fieldbus.health.can_bus_off_events);
-    EXPECT_EQ(ERR_BUS_OFF, fieldbus_subsystem_process_can(
-        &fieldbus, CAN_BUS_EVENT_ERROR, 7999u, received, 2u, &count));
-    EXPECT_EQ(SYS_OK, fieldbus_subsystem_process_can(
-        &fieldbus, CAN_BUS_EVENT_ERROR, 8000u, received, 2u, &count));
+    EXPECT_EQ(ERR_BUS_OFF, fieldbus_subsystem_process_can(&fieldbus,
+    &(const fieldbus_can_process_t){ CAN_BUS_EVENT_ERROR, 7999u, received, 2u, &count }));
+    EXPECT_EQ(SYS_OK, fieldbus_subsystem_process_can(&fieldbus,
+    &(const fieldbus_can_process_t){ CAN_BUS_EVENT_ERROR, 8000u, received, 2u, &count }));
     EXPECT_EQ(1u, fake_can.recoveries);
     EXPECT_EQ(1u, fieldbus.health.can_recoveries);
 }

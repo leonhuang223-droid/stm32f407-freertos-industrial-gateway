@@ -19,8 +19,9 @@ status_t app_context_init(app_context_t *context)
     return SYS_OK;
 }
 
-status_t app_context_configure_acquisition(
-    app_context_t *context, const app_acquisition_config_t *config)
+status_t
+app_context_configure_acquisition(app_context_t *context,
+                                  const app_acquisition_config_t *config)
 {
     status_t status;
 
@@ -29,7 +30,8 @@ status_t app_context_configure_acquisition(
     }
     context->initialization_mask &= ~APP_INITIALIZED_ACQUISITION;
     status = i2c_bus_construct(&context->acquisition_i2c,
-                               config->i2c_ops, config->i2c_context,
+                               config->i2c_ops,
+                               config->i2c_context,
                                config->i2c_timeout_ms);
     if (status != SYS_OK) {
         return status;
@@ -41,21 +43,18 @@ status_t app_context_configure_acquisition(
     if (status != SYS_OK) {
         return status;
     }
-    status = ads1115_construct(&context->ads1115,
-                               &context->acquisition_i2c,
-                               &config->ads1115);
+    status = ads1115_construct(
+        &context->ads1115, &context->acquisition_i2c, &config->ads1115);
     if (status != SYS_OK) {
         return status;
     }
-    status = max31865_construct(&context->max31865,
-                                &context->max31865_spi,
-                                &config->max31865);
+    status = max31865_construct(
+        &context->max31865, &context->max31865_spi, &config->max31865);
     if (status != SYS_OK) {
         return status;
     }
-    status = sht30_construct(&context->sht30,
-                             &context->acquisition_i2c,
-                             &config->sht30);
+    status = sht30_construct(
+        &context->sht30, &context->acquisition_i2c, &config->sht30);
     if (status != SYS_OK) {
         return status;
     }
@@ -72,8 +71,8 @@ status_t app_context_configure_acquisition(
     return status;
 }
 
-status_t app_context_configure_fieldbus(
-    app_context_t *context, const app_fieldbus_config_t *config)
+status_t app_context_configure_fieldbus(app_context_t *context,
+                                        const app_fieldbus_config_t *config)
 {
     status_t status;
 
@@ -96,8 +95,8 @@ status_t app_context_configure_fieldbus(
     if (status != SYS_OK) {
         return status;
     }
-    status = can_bus_construct(&context->can_bus, config->can_ops,
-                               config->can_context);
+    status = can_bus_construct(
+        &context->can_bus, config->can_ops, config->can_context);
     if (status != SYS_OK) {
         return status;
     }
@@ -113,6 +112,48 @@ status_t app_context_configure_fieldbus(
     return fieldbus_subsystem_start(&context->fieldbus);
 }
 
+static status_t
+construct_control_storage(app_context_t *context,
+                          const app_control_storage_config_t *config)
+{
+    status_t status;
+
+    status = spi_device_construct(&context->storage_spi,
+                                  config->storage_spi_ops,
+                                  config->storage_spi_context,
+                                  config->storage_spi_timeout_ms);
+    if (status != SYS_OK) {
+        return status;
+    }
+    status = w25q128_construct(
+        &context->w25q128, &context->storage_spi, &config->w25q128);
+    if (status != SYS_OK) {
+        return status;
+    }
+    status = storage_media_construct(
+        &context->storage_media,
+        w25q128_storage_media_ops(),
+        &context->w25q128,
+        &(const storage_media_geometry_t){config->w25q128.total_size,
+                                          EXTERNAL_FLASH_PAGE_SIZE,
+                                          EXTERNAL_FLASH_SECTOR_SIZE});
+    if (status != SYS_OK) {
+        return status;
+    }
+    status = storage_subsystem_construct(&context->storage,
+                                         &context->storage_media,
+                                         &config->default_runtime_config);
+    if (status != SYS_OK) {
+        return status;
+    }
+    status =
+        ota_staging_construct(&context->ota_staging, &context->storage_media);
+    if (status != SYS_OK) {
+        return status;
+    }
+    return SYS_OK;
+}
+
 status_t app_context_configure_control_storage(
     app_context_t *context, const app_control_storage_config_t *config)
 {
@@ -126,33 +167,7 @@ status_t app_context_configure_control_storage(
     context->initialization_mask &=
         ~(APP_INITIALIZED_STORAGE | APP_INITIALIZED_CONTROL |
           APP_INITIALIZED_CONFIG);
-    status = spi_device_construct(&context->storage_spi,
-                                  config->storage_spi_ops,
-                                  config->storage_spi_context,
-                                  config->storage_spi_timeout_ms);
-    if (status != SYS_OK) {
-        return status;
-    }
-    status = w25q128_construct(&context->w25q128, &context->storage_spi,
-                               &config->w25q128);
-    if (status != SYS_OK) {
-        return status;
-    }
-    status = storage_media_construct(
-        &context->storage_media, w25q128_storage_media_ops(),
-        &context->w25q128, config->w25q128.total_size,
-        EXTERNAL_FLASH_PAGE_SIZE, EXTERNAL_FLASH_SECTOR_SIZE);
-    if (status != SYS_OK) {
-        return status;
-    }
-    status = storage_subsystem_construct(
-        &context->storage, &context->storage_media,
-        &config->default_runtime_config);
-    if (status != SYS_OK) {
-        return status;
-    }
-    status = ota_staging_construct(&context->ota_staging,
-                                   &context->storage_media);
+    status = construct_control_storage(context, config);
     if (status != SYS_OK) {
         return status;
     }
@@ -161,20 +176,22 @@ status_t app_context_configure_control_storage(
         storage_subsystem_start(&context->storage);
     runtime_config = config->default_runtime_config;
     if (context->storage_startup_status == SYS_OK) {
-        (void)storage_subsystem_load_config(&context->storage,
-                                            &runtime_config);
+        (void)storage_subsystem_load_config(&context->storage, &runtime_config);
     }
 
     relay_config = config->relay;
     relay_config.safe_state = runtime_config.relay_safe_energized != 0u
-        ? RELAY_ENERGIZED : RELAY_DEENERGIZED;
-    status = relay_construct(&context->relay, config->relay_ops,
-                             config->relay_context, &relay_config);
+                                  ? RELAY_ENERGIZED
+                                  : RELAY_DEENERGIZED;
+    status = relay_construct(&context->relay,
+                             config->relay_ops,
+                             config->relay_context,
+                             &relay_config);
     if (status != SYS_OK) {
         return status;
     }
-    status = alarm_subsystem_construct(&context->alarm, &context->relay,
-                                       &runtime_config);
+    status = alarm_subsystem_construct(
+        &context->alarm, &context->relay, &runtime_config);
     if (status != SYS_OK) {
         return status;
     }
@@ -191,8 +208,8 @@ status_t app_context_configure_control_storage(
     return context->storage_startup_status;
 }
 
-status_t app_context_configure_network(
-    app_context_t *context, const app_network_config_t *config)
+status_t app_context_configure_network(app_context_t *context,
+                                       const app_network_config_t *config)
 {
     status_t status;
     size_t manifest_url_length;
@@ -207,25 +224,31 @@ status_t app_context_configure_network(
         return ERR_INVALID_ARG;
     }
     context->initialization_mask &= ~APP_INITIALIZED_NETWORK;
-    status = esp8266_construct(&context->esp8266, config->serial_ops,
-                               config->serial_context, &config->esp8266);
+    status = esp8266_construct(&context->esp8266,
+                               config->serial_ops,
+                               config->serial_context,
+                               &config->esp8266);
     if (status != SYS_OK) {
         return status;
     }
-    status = network_transport_construct(
-        &context->network_transport, esp8266_network_transport_ops(),
-        &context->esp8266);
+    status = network_transport_construct(&context->network_transport,
+                                         esp8266_network_transport_ops(),
+                                         &context->esp8266);
     if (status != SYS_OK) {
         return status;
     }
-    context->network_transport.connect_steps = esp8266_connect_step_ops();
-    status = network_subsystem_construct(&context->network,
-                                         &context->network_transport,
-                                         &config->network);
+    status = network_transport_set_connect_steps(&context->network_transport,
+                                                 esp8266_connect_step_ops());
     if (status != SYS_OK) {
         return status;
     }
-    memcpy(context->ota_manifest_url, config->ota_manifest_url,
+    status = network_subsystem_construct(
+        &context->network, &context->network_transport, &config->network);
+    if (status != SYS_OK) {
+        return status;
+    }
+    memcpy(context->ota_manifest_url,
+           config->ota_manifest_url,
            manifest_url_length + 1u);
     context->ota_http_timeout_ms = config->ota_http_timeout_ms;
     context->initialization_mask |= APP_INITIALIZED_NETWORK;
@@ -244,24 +267,30 @@ status_t app_context_configure_ui(app_context_t *context,
     status = display_device_construct(&context->display,
                                       config->display_ops,
                                       config->display_context,
-                                      config->width, config->height);
+                                      config->width,
+                                      config->height);
     if (status == SYS_OK && config->input_ops != 0) {
         status = input_device_construct(&context->input,
                                         config->input_ops,
                                         config->input_context,
-                                        config->width, config->height);
+                                        config->width,
+                                        config->height);
     }
     if (status == SYS_OK) {
-        status = ui_subsystem_construct(&context->ui, &context->display,
-                                        config->input_ops != 0
-                                            ? &context->input : 0,
-                                        0, 0);
+        status =
+            ui_subsystem_construct(&context->ui,
+                                   &context->display,
+                                   config->input_ops != 0 ? &context->input : 0,
+                                   0,
+                                   0);
     }
     if (status == SYS_OK) {
-        status = ui_subsystem_configure_draw_buffers(
-            &context->ui, config->draw_buffer_primary,
-            config->draw_buffer_secondary, config->draw_buffer_pixels,
-            config->draw_buffer_degraded);
+        status =
+            ui_subsystem_configure_draw_buffers(&context->ui,
+                                                config->draw_buffer_primary,
+                                                config->draw_buffer_secondary,
+                                                config->draw_buffer_pixels,
+                                                config->draw_buffer_degraded);
     }
     if (status == SYS_OK) {
         context->initialization_mask |= APP_INITIALIZED_UI;
@@ -282,8 +311,8 @@ status_t app_context_configure_cli(app_context_t *context,
                                      config->transport_ops,
                                      config->transport_context);
     if (status == SYS_OK) {
-        status = cli_subsystem_construct(&context->cli,
-                                         &context->cli_transport, 0, 0);
+        status = cli_subsystem_construct(
+            &context->cli, &context->cli_transport, 0, 0);
     }
     if (status == SYS_OK) {
         context->initialization_mask |= APP_INITIALIZED_CLI;
@@ -291,8 +320,9 @@ status_t app_context_configure_cli(app_context_t *context,
     return status;
 }
 
-status_t app_context_configure_reliability(
-    app_context_t *context, const app_reliability_config_t *config)
+status_t
+app_context_configure_reliability(app_context_t *context,
+                                  const app_reliability_config_t *config)
 {
     status_t status;
 
@@ -300,36 +330,35 @@ status_t app_context_configure_reliability(
         return ERR_INVALID_ARG;
     }
     context->initialization_mask &= ~APP_INITIALIZED_RELIABILITY;
-    status = watchdog_device_construct(&context->watchdog,
-                                       config->watchdog_ops,
-                                       config->watchdog_context);
+    status = watchdog_device_construct(
+        &context->watchdog, config->watchdog_ops, config->watchdog_context);
     if (status == SYS_OK) {
-        status = fault_recorder_construct(
-            &context->fault_recorder, config->fault_recorder_ops,
-            config->fault_recorder_context,
-            config->fault_injection_enabled);
+        status = fault_recorder_construct(&context->fault_recorder,
+                                          config->fault_recorder_ops,
+                                          config->fault_recorder_context,
+                                          config->fault_injection_enabled);
     }
     if (status == SYS_OK) {
         status = power_manager_construct(&context->power, &config->power, 0u);
     }
     if (status == SYS_OK) {
-        status = deep_power_controller_construct(
-            &context->deep_power, config->deep_power_ops,
-            config->deep_power_context, &config->deep_power);
+        status = deep_power_controller_construct(&context->deep_power,
+                                                 config->deep_power_ops,
+                                                 config->deep_power_context,
+                                                 &config->deep_power);
     }
     if (status == SYS_OK) {
         status = boot_confirmation_construct(&context->boot_confirmation,
-                                              &config->metadata_store,
-                                              config->running_slot);
+                                             &config->metadata_store,
+                                             config->running_slot);
     }
     if (status == SYS_OK) {
         status = watchdog_device_start(&context->watchdog,
                                        config->watchdog_timeout_ms);
     }
     if (status == SYS_OK) {
-        status = supervisor_subsystem_construct(&context->supervisor,
-                                                &context->watchdog,
-                                                &config->supervisor);
+        status = supervisor_subsystem_construct(
+            &context->supervisor, &context->watchdog, &config->supervisor);
     }
     if (status == SYS_OK) {
         context->initialization_mask |= APP_INITIALIZED_RELIABILITY;

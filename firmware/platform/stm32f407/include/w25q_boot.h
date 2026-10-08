@@ -33,8 +33,10 @@ typedef struct {
 status_t w25q_boot_init(w25q_boot_t *device,
                         const w25q_boot_config_t *config,
                         const w25q_boot_port_t *port);
-status_t w25q_boot_read(w25q_boot_t *device, uint32_t address,
-                        uint8_t *buffer, size_t length);
+status_t w25q_boot_read(w25q_boot_t *device,
+                        uint32_t address,
+                        uint8_t *buffer,
+                        size_t length);
 uint32_t w25q_boot_detected_jedec_id(const w25q_boot_t *device);
 
 #endif

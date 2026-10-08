@@ -8,9 +8,14 @@
 
 typedef struct {
     status_t (*init)(void *context);
-    status_t (*read)(void *context, uint8_t *data, size_t capacity,
-                     size_t *length, uint32_t timeout_ms);
-    status_t (*write)(void *context, const uint8_t *data, size_t length,
+    status_t (*read)(void *context,
+                     uint8_t *data,
+                     size_t capacity,
+                     size_t *length,
+                     uint32_t timeout_ms);
+    status_t (*write)(void *context,
+                      const uint8_t *data,
+                      size_t length,
                       uint32_t timeout_ms);
     status_t (*suspend)(void *context);
     status_t (*resume)(void *context);
@@ -31,11 +36,14 @@ status_t cli_transport_construct(cli_transport_t *transport,
                                  const cli_transport_ops_t *ops,
                                  void *context);
 status_t cli_transport_init(cli_transport_t *transport);
-status_t cli_transport_read(cli_transport_t *transport, uint8_t *data,
-                            size_t capacity, size_t *length,
+status_t cli_transport_read(cli_transport_t *transport,
+                            uint8_t *data,
+                            size_t capacity,
+                            size_t *length,
                             uint32_t timeout_ms);
 status_t cli_transport_write(cli_transport_t *transport,
-                             const uint8_t *data, size_t length,
+                             const uint8_t *data,
+                             size_t length,
                              uint32_t timeout_ms);
 status_t cli_transport_suspend(cli_transport_t *transport);
 status_t cli_transport_resume(cli_transport_t *transport);

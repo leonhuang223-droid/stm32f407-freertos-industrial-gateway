@@ -20,7 +20,8 @@ typedef struct {
 
 typedef struct {
     status_t (*init)(max31865_t *device);
-    status_t (*sample)(max31865_t *device, uint32_t now_ms,
+    status_t (*sample)(max31865_t *device,
+                       uint32_t now_ms,
                        gateway_measurement_t *out_measurement);
     status_t (*suspend)(max31865_t *device);
     status_t (*resume)(max31865_t *device);
@@ -35,18 +36,21 @@ struct max31865 {
     uint8_t last_fault_status;
 };
 
-status_t max31865_construct(max31865_t *device, spi_device_t *spi,
+status_t max31865_construct(max31865_t *device,
+                            spi_device_t *spi,
                             const max31865_config_t *config);
 status_t max31865_init(max31865_t *device);
-status_t max31865_sample(max31865_t *device, uint32_t now_ms,
+status_t max31865_sample(max31865_t *device,
+                         uint32_t now_ms,
                          gateway_measurement_t *out_measurement);
 status_t max31865_suspend(max31865_t *device);
 status_t max31865_resume(max31865_t *device);
 status_t max31865_self_test(max31865_t *device);
 status_t max31865_get_health(const max31865_t *device,
                              gateway_device_health_t *out_health);
-status_t max31865_temperature_millicelsius(
-    uint16_t rtd_code, uint32_t reference_resistor_milliohm,
-    uint32_t rtd_nominal_milliohm, int32_t *out_temperature);
+status_t max31865_temperature_millicelsius(uint16_t rtd_code,
+                                           uint32_t reference_resistor_milliohm,
+                                           uint32_t rtd_nominal_milliohm,
+                                           int32_t *out_temperature);
 
 #endif

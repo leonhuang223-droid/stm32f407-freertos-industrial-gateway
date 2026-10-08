@@ -27,14 +27,13 @@ typedef struct {
     uint8_t initialized;
 } periodic_timing_monitor_t;
 
-status_t periodic_timing_monitor_construct(
-    periodic_timing_monitor_t *monitor, uint32_t expected_period_ms,
-    uint32_t release_tolerance_ms);
-status_t periodic_timing_monitor_note(
-    periodic_timing_monitor_t *monitor, uint32_t actual_release_ms,
-    uint32_t scheduled_release_ms);
-status_t periodic_timing_monitor_get(
-    const periodic_timing_monitor_t *monitor,
-    periodic_timing_stats_t *stats);
+status_t periodic_timing_monitor_construct(periodic_timing_monitor_t *monitor,
+                                           uint32_t expected_period_ms,
+                                           uint32_t release_tolerance_ms);
+status_t periodic_timing_monitor_note(periodic_timing_monitor_t *monitor,
+                                      uint32_t actual_release_ms,
+                                      uint32_t scheduled_release_ms);
+status_t periodic_timing_monitor_get(const periodic_timing_monitor_t *monitor,
+                                     periodic_timing_stats_t *stats);
 
 #endif

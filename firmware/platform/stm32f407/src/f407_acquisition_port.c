@@ -26,65 +26,89 @@ static I2C_HandleTypeDef f407_i2c1;
 static status_t status_from_hal(HAL_StatusTypeDef status)
 {
     switch (status) {
-    case HAL_OK: return SYS_OK;
-    case HAL_TIMEOUT: return ERR_TIMEOUT;
-    case HAL_BUSY: return ERR_DEVICE_NOT_READY;
-    default: return ERR_IO;
+    case HAL_OK:
+        return SYS_OK;
+    case HAL_TIMEOUT:
+        return ERR_TIMEOUT;
+    case HAL_BUSY:
+        return ERR_DEVICE_NOT_READY;
+    default:
+        return ERR_IO;
     }
 }
 
-static status_t f407_i2c_write(void *context, uint8_t address,
-                               const uint8_t *data, size_t length)
+static status_t f407_i2c_write(void *context,
+                               uint8_t address,
+                               const uint8_t *data,
+                               size_t length)
 {
     f407_i2c_port_t *port = context;
 
     if (port == 0 || data == 0 || length == 0u || length > UINT16_MAX) {
         return ERR_INVALID_ARG;
     }
-    return status_from_hal(HAL_I2C_Master_Transmit(
-        port->handle, (uint16_t)address << 1u, (uint8_t *)data,
-        (uint16_t)length, port->timeout_ms));
+    return status_from_hal(HAL_I2C_Master_Transmit(port->handle,
+                                                   (uint16_t)address << 1u,
+                                                   (uint8_t *)data,
+                                                   (uint16_t)length,
+                                                   port->timeout_ms));
 }
 
-static status_t f407_i2c_read(void *context, uint8_t address,
-                              uint8_t *data, size_t length)
+static status_t
+f407_i2c_read(void *context, uint8_t address, uint8_t *data, size_t length)
 {
     f407_i2c_port_t *port = context;
 
     if (port == 0 || data == 0 || length == 0u || length > UINT16_MAX) {
         return ERR_INVALID_ARG;
     }
-    return status_from_hal(HAL_I2C_Master_Receive(
-        port->handle, (uint16_t)address << 1u, data, (uint16_t)length,
-        port->timeout_ms));
+    return status_from_hal(HAL_I2C_Master_Receive(port->handle,
+                                                  (uint16_t)address << 1u,
+                                                  data,
+                                                  (uint16_t)length,
+                                                  port->timeout_ms));
 }
 
-static status_t f407_i2c_write_read(void *context, uint8_t address,
-                                    const uint8_t *write_data,
-                                    size_t write_length,
-                                    uint8_t *read_data, size_t read_length)
+static status_t f407_i2c_write_read(void *context,
+                                    uint8_t address,
+                                    const i2c_transfer_t *parameters)
 {
+    if (parameters == 0) {
+        return ERR_INVALID_ARG;
+    }
+    const uint8_t *write_data = parameters->write_data;
+    size_t write_length = parameters->write_length;
+    uint8_t *read_data = parameters->read_data;
+    size_t read_length = parameters->read_length;
+
     f407_i2c_port_t *port = context;
     HAL_StatusTypeDef hal_status;
 
-    if (port == 0 || write_data == 0 || read_data == 0 ||
-        write_length == 0u || read_length == 0u ||
-        write_length > UINT16_MAX || read_length > UINT16_MAX) {
+    if (port == 0 || write_data == 0 || read_data == 0 || write_length == 0u ||
+        read_length == 0u || write_length > UINT16_MAX ||
+        read_length > UINT16_MAX) {
         return ERR_INVALID_ARG;
     }
     if (write_length == 1u) {
-        hal_status = HAL_I2C_Mem_Read(
-            port->handle, (uint16_t)address << 1u, write_data[0],
-            I2C_MEMADD_SIZE_8BIT, read_data, (uint16_t)read_length,
-            port->timeout_ms);
+        hal_status = HAL_I2C_Mem_Read(port->handle,
+                                      (uint16_t)address << 1u,
+                                      write_data[0],
+                                      I2C_MEMADD_SIZE_8BIT,
+                                      read_data,
+                                      (uint16_t)read_length,
+                                      port->timeout_ms);
     } else {
-        hal_status = HAL_I2C_Master_Transmit(
-            port->handle, (uint16_t)address << 1u, (uint8_t *)write_data,
-            (uint16_t)write_length, port->timeout_ms);
+        hal_status = HAL_I2C_Master_Transmit(port->handle,
+                                             (uint16_t)address << 1u,
+                                             (uint8_t *)write_data,
+                                             (uint16_t)write_length,
+                                             port->timeout_ms);
         if (hal_status == HAL_OK) {
-            hal_status = HAL_I2C_Master_Receive(
-                port->handle, (uint16_t)address << 1u, read_data,
-                (uint16_t)read_length, port->timeout_ms);
+            hal_status = HAL_I2C_Master_Receive(port->handle,
+                                                (uint16_t)address << 1u,
+                                                read_data,
+                                                (uint16_t)read_length,
+                                                port->timeout_ms);
         }
     }
     return status_from_hal(hal_status);
@@ -110,13 +134,14 @@ static status_t f407_spi_select(void *context, int active)
     if (port == 0 || (active != 0 && active != 1)) {
         return ERR_INVALID_ARG;
     }
-    HAL_GPIO_WritePin(port->cs_port, port->cs_pin,
+    HAL_GPIO_WritePin(port->cs_port,
+                      port->cs_pin,
                       active != 0 ? GPIO_PIN_RESET : GPIO_PIN_SET);
     return SYS_OK;
 }
 
-static status_t f407_spi_transfer(void *context, const uint8_t *tx,
-                                  uint8_t *rx, size_t length)
+static status_t
+f407_spi_transfer(void *context, const uint8_t *tx, uint8_t *rx, size_t length)
 {
     f407_spi_port_t *port = context;
     HAL_StatusTypeDef hal_status;
@@ -125,20 +150,21 @@ static status_t f407_spi_transfer(void *context, const uint8_t *tx,
         return ERR_INVALID_ARG;
     }
     if (rx != 0) {
-        hal_status = HAL_SPI_TransmitReceive(
-            port->handle, (uint8_t *)tx, rx, (uint16_t)length,
-            port->timeout_ms);
+        hal_status = HAL_SPI_TransmitReceive(port->handle,
+                                             (uint8_t *)tx,
+                                             rx,
+                                             (uint16_t)length,
+                                             port->timeout_ms);
     } else {
         hal_status = HAL_SPI_Transmit(
-            port->handle, (uint8_t *)tx, (uint16_t)length,
-            port->timeout_ms);
+            port->handle, (uint8_t *)tx, (uint16_t)length, port->timeout_ms);
     }
     return status_from_hal(hal_status);
 }
 
 static status_t f407_i2c1_init(void)
 {
-    GPIO_InitTypeDef gpio = { 0 };
+    GPIO_InitTypeDef gpio = {0};
 
     __HAL_RCC_GPIOB_CLK_ENABLE();
     __HAL_RCC_I2C1_CLK_ENABLE();
@@ -164,19 +190,16 @@ static status_t f407_i2c1_init(void)
 status_t f407_acquisition_configure(app_context_t *context)
 {
     static const i2c_bus_ops_t i2c_ops = {
-        f407_i2c_write, f407_i2c_read, f407_i2c_write_read, f407_delay_ms
-    };
+        f407_i2c_write, f407_i2c_read, f407_i2c_write_read, f407_delay_ms};
     static const spi_device_ops_t spi_ops = {
-        f407_spi_select, f407_spi_transfer, f407_delay_ms
-    };
-    static f407_i2c_port_t i2c_port = {
-        &f407_i2c1, F407_ACQUISITION_I2C_TIMEOUT_MS
-    };
-    static f407_spi_port_t spi_port = {
-        &hspi2, MAX31865_CS_GPIO_Port, MAX31865_CS_Pin,
-        F407_MAX31865_SPI_TIMEOUT_MS
-    };
-    app_acquisition_config_t config = { 0 };
+        f407_spi_select, f407_spi_transfer, f407_delay_ms};
+    static f407_i2c_port_t i2c_port = {&f407_i2c1,
+                                       F407_ACQUISITION_I2C_TIMEOUT_MS};
+    static f407_spi_port_t spi_port = {&hspi2,
+                                       MAX31865_CS_GPIO_Port,
+                                       MAX31865_CS_Pin,
+                                       F407_MAX31865_SPI_TIMEOUT_MS};
+    app_acquisition_config_t config = {0};
 
     if (context == 0) {
         return ERR_INVALID_ARG;
@@ -205,8 +228,7 @@ status_t f407_acquisition_configure(app_context_t *context)
 
     config.max31865.reference_resistor_milliohm =
         F407_MAX31865_REFERENCE_MILLIOHM;
-    config.max31865.rtd_nominal_milliohm =
-        F407_PT100_NOMINAL_MILLIOHM;
+    config.max31865.rtd_nominal_milliohm = F407_PT100_NOMINAL_MILLIOHM;
     config.max31865.point_id = GATEWAY_POINT_PT100_TEMPERATURE;
     config.max31865.bias_settle_ms = F407_MAX31865_BIAS_SETTLE_MS;
     config.max31865.three_wire = 1u;

@@ -58,7 +58,8 @@ typedef struct {
 
 typedef status_t (*cli_command_handler_t)(void *context,
                                           const cli_command_t *command,
-                                          char *response, size_t capacity);
+                                          char *response,
+                                          size_t capacity);
 
 typedef struct {
     uint32_t lines_received;
@@ -76,6 +77,7 @@ typedef struct {
     void *command_context;
     char line[CLI_LINE_CAPACITY];
     size_t line_length;
+    uint8_t discard_line;
     cli_health_t health;
 } cli_subsystem_t;
 
@@ -84,11 +86,11 @@ status_t cli_subsystem_construct(cli_subsystem_t *subsystem,
                                  cli_command_handler_t command_handler,
                                  void *command_context);
 status_t cli_subsystem_start(cli_subsystem_t *subsystem);
-status_t cli_subsystem_set_command_handler(
-    cli_subsystem_t *subsystem, cli_command_handler_t command_handler,
-    void *command_context);
-status_t cli_subsystem_process(cli_subsystem_t *subsystem,
-                               uint32_t timeout_ms);
+status_t
+cli_subsystem_set_command_handler(cli_subsystem_t *subsystem,
+                                  cli_command_handler_t command_handler,
+                                  void *command_context);
+status_t cli_subsystem_process(cli_subsystem_t *subsystem, uint32_t timeout_ms);
 status_t cli_parse_command(char *line, cli_command_t *command);
 status_t cli_subsystem_get_health(const cli_subsystem_t *subsystem,
                                   cli_health_t *health);

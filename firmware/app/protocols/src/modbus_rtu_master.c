@@ -16,9 +16,8 @@ uint16_t modbus_rtu_crc16(const uint8_t *data, size_t length)
 
         crc ^= data[i];
         for (bit = 0u; bit < 8u; ++bit) {
-            crc = (crc & 1u) != 0u
-                ? (uint16_t)((crc >> 1u) ^ 0xa001u)
-                : (uint16_t)(crc >> 1u);
+            crc = (crc & 1u) != 0u ? (uint16_t)((crc >> 1u) ^ 0xa001u)
+                                   : (uint16_t)(crc >> 1u);
         }
     }
     return crc;
@@ -38,7 +37,8 @@ static status_t validate_entry(const modbus_poll_entry_t *entry)
          entry->function != MODBUS_FUNCTION_READ_INPUT) ||
         entry->quantity == 0u || entry->quantity > MODBUS_RTU_MAX_REGISTERS ||
         entry->scale_denominator == 0 || entry->point_id == 0u ||
-        entry->unit > GATEWAY_UNIT_RAW || entry->value_type > MODBUS_VALUE_S32 ||
+        entry->unit > GATEWAY_UNIT_RAW ||
+        entry->value_type > MODBUS_VALUE_S32 ||
         entry->word_order > MODBUS_WORD_LOW_FIRST) {
         return ERR_INVALID_ARG;
     }
@@ -47,9 +47,11 @@ static status_t validate_entry(const modbus_poll_entry_t *entry)
     return required_registers <= entry->quantity ? SYS_OK : ERR_INVALID_ARG;
 }
 
-status_t modbus_master_construct(modbus_master_t *master, rs485_bus_t *bus,
+status_t modbus_master_construct(modbus_master_t *master,
+                                 rs485_bus_t *bus,
                                  const modbus_poll_entry_t *poll_table,
-                                 size_t poll_count, uint8_t retry_limit)
+                                 size_t poll_count,
+                                 uint8_t retry_limit)
 {
     size_t i;
 
@@ -94,8 +96,8 @@ static status_t response_crc_status(const uint8_t *response, size_t length)
     }
     expected = (uint16_t)response[length - 2u] |
                (uint16_t)((uint16_t)response[length - 1u] << 8u);
-    return modbus_rtu_crc16(response, length - 2u) == expected
-        ? SYS_OK : ERR_CRC;
+    return modbus_rtu_crc16(response, length - 2u) == expected ? SYS_OK
+                                                               : ERR_CRC;
 }
 
 static uint16_t response_word(const uint8_t *data, size_t register_index)
@@ -106,7 +108,8 @@ static uint16_t response_word(const uint8_t *data, size_t register_index)
 }
 
 static status_t decode_raw_value(const modbus_poll_entry_t *entry,
-                                 const uint8_t *data, int32_t *raw_value)
+                                 const uint8_t *data,
+                                 int32_t *raw_value)
 {
     uint16_t first;
 
@@ -123,11 +126,11 @@ static status_t decode_raw_value(const modbus_poll_entry_t *entry,
         return SYS_OK;
     }
     {
-        uint16_t second = response_word(data,
-            (size_t)entry->value_register_index + 1u);
+        uint16_t second =
+            response_word(data, (size_t)entry->value_register_index + 1u);
         uint32_t combined = entry->word_order == MODBUS_WORD_HIGH_FIRST
-            ? ((uint32_t)first << 16u) | second
-            : ((uint32_t)second << 16u) | first;
+                                ? ((uint32_t)first << 16u) | second
+                                : ((uint32_t)second << 16u) | first;
 
         if (entry->value_type == MODBUS_VALUE_U32 && combined > INT32_MAX) {
             return ERR_PROTOCOL;
@@ -138,8 +141,10 @@ static status_t decode_raw_value(const modbus_poll_entry_t *entry,
 }
 
 static status_t parse_response(const modbus_poll_entry_t *entry,
-                               const uint8_t *response, size_t length,
-                               int32_t *raw_value, int32_t *engineering_value)
+                               const uint8_t *response,
+                               size_t length,
+                               int32_t *raw_value,
+                               int32_t *engineering_value)
 {
     size_t expected_length;
     status_t status;
@@ -165,7 +170,8 @@ static status_t parse_response(const modbus_poll_entry_t *entry,
         return status;
     }
     scaled = ((int64_t)*raw_value * entry->scale_numerator) /
-             entry->scale_denominator + entry->engineering_offset;
+                 entry->scale_denominator +
+             entry->engineering_offset;
     if (scaled < INT32_MIN || scaled > INT32_MAX) {
         return ERR_PROTOCOL;
     }
@@ -184,7 +190,8 @@ static void update_error_statistics(modbus_master_t *master, status_t status)
     }
 }
 
-status_t modbus_master_poll_next(modbus_master_t *master, uint32_t now_ms,
+status_t modbus_master_poll_next(modbus_master_t *master,
+                                 uint32_t now_ms,
                                  gateway_measurement_t *measurement)
 {
     const modbus_poll_entry_t *entry;
@@ -217,11 +224,17 @@ status_t modbus_master_poll_next(modbus_master_t *master, uint32_t now_ms,
             master->health.retries++;
         }
         master->health.transport_attempts++;
-        status = rs485_bus_exchange(master->bus, request, sizeof(request),
-                                    response, sizeof(response),
-                                    &response_length);
+        status =
+            rs485_bus_exchange(master->bus,
+                               &(const rs485_transfer_t){request,
+                                                         sizeof(request),
+                                                         response,
+                                                         sizeof(response),
+                                                         &response_length});
         if (status == SYS_OK) {
-            status = parse_response(entry, response, response_length,
+            status = parse_response(entry,
+                                    response,
+                                    response_length,
                                     &measurement->raw_value,
                                     &measurement->engineering_value);
             if (status == ERR_PROTOCOL && response_length == 5u &&

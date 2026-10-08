@@ -54,8 +54,8 @@ status_t config_subsystem_construct(config_subsystem_t *subsystem,
     return SYS_OK;
 }
 
-static gateway_alarm_rule_config_t *find_rule(
-    gateway_runtime_config_t *config, uint16_t point_id)
+static gateway_alarm_rule_config_t *find_rule(gateway_runtime_config_t *config,
+                                              uint16_t point_id)
 {
     unsigned int i;
 
@@ -173,9 +173,9 @@ status_t config_subsystem_prepare(config_subsystem_t *subsystem,
     return SYS_OK;
 }
 
-status_t config_subsystem_commit(
-    config_subsystem_t *subsystem,
-    const gateway_storage_config_request_t *request)
+status_t
+config_subsystem_commit(config_subsystem_t *subsystem,
+                        const gateway_storage_config_request_t *request)
 {
     status_t status;
 
@@ -186,10 +186,10 @@ status_t config_subsystem_commit(
     if (status != SYS_OK || subsystem->health.pending_requests == 0u ||
         request->request_id != subsystem->health.last_request_id ||
         request->config.revision != subsystem->staged.revision ||
-        memcmp(&request->config, &subsystem->staged,
-               sizeof(request->config)) != 0) {
-        subsystem->health.last_status = status != SYS_OK
-            ? status : ERR_INVALID_ARG;
+        memcmp(&request->config, &subsystem->staged, sizeof(request->config)) !=
+            0) {
+        subsystem->health.last_status =
+            status != SYS_OK ? status : ERR_INVALID_ARG;
         return subsystem->health.last_status;
     }
     subsystem->active = request->config;
@@ -207,7 +207,8 @@ status_t config_subsystem_commit(
 }
 
 status_t config_subsystem_reject(config_subsystem_t *subsystem,
-                                 uint32_t request_id, status_t reason)
+                                 uint32_t request_id,
+                                 status_t reason)
 {
     if (subsystem == 0 || subsystem->initialized == 0u ||
         subsystem->health.pending_requests == 0u || reason == SYS_OK ||

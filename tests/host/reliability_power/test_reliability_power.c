@@ -305,7 +305,7 @@ static void test_deep_power_controller(void)
         DEEP_POWER_PARTICIPANT_ACQUISITION |
         DEEP_POWER_PARTICIPANT_STORAGE;
     deep_power_controller_config_t config = {
-        1u, 1u, 1000u, 8000u, 500u, required
+        1u, 1u, 1000u, 8000u, 500u, required, 5000u
     };
     fake_deep_power_t fake;
     deep_power_controller_t controller;
@@ -319,19 +319,19 @@ static void test_deep_power_controller(void)
     EXPECT_EQ(SYS_OK, deep_power_controller_construct(
         &controller, &fake_deep_power_ops, &fake, &config));
     EXPECT_EQ(ERR_INVALID_ARG, deep_power_controller_request(
-        &controller, POWER_STOP_PERIODIC, 2000u, 0u));
+        &controller, POWER_STOP_PERIODIC, 2000u, 0u, 0u));
     EXPECT_EQ(SYS_OK, deep_power_controller_request(
         &controller, POWER_STOP_PERIODIC, 2000u,
-        DEEP_POWER_CONFIRMATION));
+        DEEP_POWER_CONFIRMATION, 0u));
     EXPECT_EQ(ERR_DEVICE_NOT_READY, deep_power_controller_process(
         &controller, DEEP_POWER_PARTICIPANT_ACQUISITION,
-        POWER_STANDBY_SHIPPING, 6000u));
+        POWER_STANDBY_SHIPPING, 6000u, 0u));
     EXPECT_EQ(ERR_DEVICE_NOT_READY, deep_power_controller_process(
-        &controller, required, POWER_TICKLESS_SLEEP, 6000u));
+        &controller, required, POWER_TICKLESS_SLEEP, 6000u, 0u));
     EXPECT_EQ(ERR_TIMEOUT, deep_power_controller_process(
-        &controller, required, POWER_STANDBY_SHIPPING, 2400u));
+        &controller, required, POWER_STANDBY_SHIPPING, 2400u, 0u));
     EXPECT_EQ(SYS_OK, deep_power_controller_process(
-        &controller, required, POWER_STANDBY_SHIPPING, 6000u));
+        &controller, required, POWER_STANDBY_SHIPPING, 6000u, 0u));
     EXPECT_EQ(SYS_OK, deep_power_controller_get_health(
         &controller, &health));
     EXPECT_EQ(1, fake.stop_calls);
@@ -343,9 +343,9 @@ static void test_deep_power_controller(void)
 
     EXPECT_EQ(SYS_OK, deep_power_controller_request(
         &controller, POWER_STANDBY_SHIPPING, 0u,
-        DEEP_POWER_CONFIRMATION));
+        DEEP_POWER_CONFIRMATION, 0u));
     EXPECT_EQ(ERR_RESET_REQUIRED, deep_power_controller_process(
-        &controller, required, POWER_STANDBY_SHIPPING, 6000u));
+        &controller, required, POWER_STANDBY_SHIPPING, 6000u, 0u));
     EXPECT_EQ(SYS_OK, deep_power_controller_get_health(
         &controller, &health));
     EXPECT_EQ(1, fake.standby_calls);
@@ -359,10 +359,10 @@ static void test_deep_power_controller(void)
         &controller, &fake_deep_power_ops, &fake, &config));
     EXPECT_EQ(ERR_UNSUPPORTED, deep_power_controller_request(
         &controller, POWER_STOP_PERIODIC, 2000u,
-        DEEP_POWER_CONFIRMATION));
+        DEEP_POWER_CONFIRMATION, 0u));
     EXPECT_EQ(ERR_UNSUPPORTED, deep_power_controller_request(
         &controller, POWER_STANDBY_SHIPPING, 0u,
-        DEEP_POWER_CONFIRMATION));
+        DEEP_POWER_CONFIRMATION, 0u));
 }
 
 static void test_critical_timing_monitor(void)
@@ -469,18 +469,18 @@ static status_t prepare_trial(fake_metadata_store_t *store,
     }
     store->copies[SLOT_A] = current;
     store->valid[SLOT_A] = 1u;
-    status = boot_meta_request_staging(&current, SLOT_B, "2.0.0",
-                                       0x12345678u, digest, &desired);
+    status = boot_meta_request_staging(&current,
+    &(const boot_staging_request_t){ SLOT_B, "2.0.0", 0x12345678u, digest, &desired });
     if (status == SYS_OK) {
-        status = boot_meta_commit(port, &current, copy, &desired,
-                                  &committed, &copy);
+        status = boot_meta_commit(port,
+    &(const boot_meta_commit_request_t){ &current, copy, &desired, &committed, &copy });
     }
     if (status == SYS_OK) {
         status = boot_meta_request_trial(&committed, &desired);
     }
     if (status == SYS_OK) {
-        status = boot_meta_commit(port, &committed, copy, &desired,
-                                  &committed, &copy);
+        status = boot_meta_commit(port,
+    &(const boot_meta_commit_request_t){ &committed, copy, &desired, &committed, &copy });
     }
     return status;
 }

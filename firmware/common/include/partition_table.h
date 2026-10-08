@@ -33,13 +33,10 @@ extern "C" {
 #define PARTITION_RESERVED_SIZE 0u
 
 /**
- * @brief Logical application slot identifiers shared by Bootloader, App and tools.
+ * @brief Logical application slot identifiers shared by Bootloader, App and
+ * tools.
  */
-typedef enum {
-    SLOT_A = 0,
-    SLOT_B = 1,
-    SLOT_NONE = 0xFF
-} app_slot_t;
+typedef enum { SLOT_A = 0, SLOT_B = 1, SLOT_NONE = 0xFF } app_slot_t;
 
 /**
  * @brief Persistent boot state stored in Boot Metadata.
@@ -57,7 +54,7 @@ typedef enum {
  * @brief Internal Flash partition descriptor.
  *
  * App image partitions describe only the executable body area. Descriptor
- * partitions describe the final 2 KB page in each physical App slot.
+ * partitions describe the final 128 KB erase sector in each physical App slot.
  */
 typedef struct {
     uint32_t start;
@@ -74,7 +71,7 @@ const partition_t *partition_get_slot(app_slot_t slot);
 /** @brief Return the executable body partition for an App slot. */
 const partition_t *partition_get_slot_image(app_slot_t slot);
 
-/** @brief Return the 2 KB image descriptor page for an App slot. */
+/** @brief Return the 128 KB descriptor erase sector for an App slot. */
 const partition_t *partition_get_slot_descriptor(app_slot_t slot);
 
 /** @brief Return the Metadata A/B Flash partition for a copy slot. */

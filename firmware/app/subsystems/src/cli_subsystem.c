@@ -54,8 +54,7 @@ static status_t parse_u32(const char *text, uint32_t *value)
     }
     errno = 0;
     parsed = strtoul(text, &end, 0);
-    if (errno != 0 || *end != '\0' || parsed == 0u ||
-        parsed > UINT32_MAX) {
+    if (errno != 0 || *end != '\0' || parsed == 0u || parsed > UINT32_MAX) {
         return ERR_INVALID_ARG;
     }
     *value = (uint32_t)parsed;
@@ -67,17 +66,15 @@ static status_t parse_config_field(const char *text, config_field_t *field)
     static const struct {
         const char *name;
         config_field_t field;
-    } fields[] = {
-        { "high", CONFIG_FIELD_HIGH_THRESHOLD },
-        { "low", CONFIG_FIELD_LOW_THRESHOLD },
-        { "hysteresis", CONFIG_FIELD_HYSTERESIS },
-        { "assert", CONFIG_FIELD_ASSERT_SAMPLES },
-        { "recover", CONFIG_FIELD_RECOVER_SAMPLES },
-        { "high_enable", CONFIG_FIELD_HIGH_ENABLED },
-        { "low_enable", CONFIG_FIELD_LOW_ENABLED },
-        { "relay_on_alarm", CONFIG_FIELD_RELAY_ON_ALARM },
-        { "relay_safe", CONFIG_FIELD_RELAY_SAFE_ENERGIZED }
-    };
+    } fields[] = {{"high", CONFIG_FIELD_HIGH_THRESHOLD},
+                  {"low", CONFIG_FIELD_LOW_THRESHOLD},
+                  {"hysteresis", CONFIG_FIELD_HYSTERESIS},
+                  {"assert", CONFIG_FIELD_ASSERT_SAMPLES},
+                  {"recover", CONFIG_FIELD_RECOVER_SAMPLES},
+                  {"high_enable", CONFIG_FIELD_HIGH_ENABLED},
+                  {"low_enable", CONFIG_FIELD_LOW_ENABLED},
+                  {"relay_on_alarm", CONFIG_FIELD_RELAY_ON_ALARM},
+                  {"relay_safe", CONFIG_FIELD_RELAY_SAFE_ENERGIZED}};
     unsigned int i;
 
     for (i = 0u; i < sizeof(fields) / sizeof(fields[0]); ++i) {
@@ -99,7 +96,8 @@ static status_t parse_page(const char *text, ui_page_id_t *page)
 
         for (j = 0u; name[j] != '\0' && text[j] != '\0'; ++j) {
             char a = name[j] >= 'A' && name[j] <= 'Z'
-                ? (char)(name[j] - 'A' + 'a') : name[j];
+                         ? (char)(name[j] - 'A' + 'a')
+                         : name[j];
             if (a != text[j]) {
                 break;
             }
@@ -112,16 +110,214 @@ static status_t parse_page(const char *text, ui_page_id_t *page)
     return ERR_UNSUPPORTED;
 }
 
-status_t cli_parse_command(char *line, cli_command_t *command)
+static status_t parse_rtos(char *second, char **cursor, cli_command_t *command)
 {
-    char *cursor = line;
-    char *first;
-    char *second;
+    if (second == 0) {
+        command->id = CLI_COMMAND_RTOS;
+        return SYS_OK;
+    }
+    if (strcmp(second, "task") == 0) {
+        command->id = CLI_COMMAND_RTOS_TASK;
+    } else if (strcmp(second, "queue") == 0) {
+        command->id = CLI_COMMAND_RTOS_QUEUE;
+    } else if (strcmp(second, "runtime") == 0) {
+        command->id = CLI_COMMAND_RTOS_RUNTIME;
+    } else if (strcmp(second, "timing") == 0) {
+        command->id = CLI_COMMAND_RTOS_TIMING;
+    } else {
+        return ERR_UNSUPPORTED;
+    }
+    return next_token(cursor) == 0 ? SYS_OK : ERR_INVALID_ARG;
+}
+
+static status_t parse_alarm(char *second, char **cursor, cli_command_t *command)
+{
+    char *third;
+
+    if (strcmp(second, "list") == 0) {
+        command->id = CLI_COMMAND_ALARM_LIST;
+        return next_token(cursor) == 0 ? SYS_OK : ERR_INVALID_ARG;
+    }
+    if (strcmp(second, "ack") == 0) {
+        third = next_token(cursor);
+        command->id = CLI_COMMAND_ALARM_ACK;
+        return parse_u32(third, &command->argument.alarm_event_id) == SYS_OK &&
+                       next_token(cursor) == 0
+                   ? SYS_OK
+                   : ERR_INVALID_ARG;
+    }
+    return ERR_UNSUPPORTED;
+}
+
+static status_t
+parse_config(char *second, char **cursor, cli_command_t *command)
+{
     char *third;
     char *fourth;
     char *fifth;
     int32_t point_id;
     int32_t value;
+
+    if (strcmp(second, "show") == 0) {
+        command->id = CLI_COMMAND_CONFIG_SHOW;
+        return next_token(cursor) == 0 ? SYS_OK : ERR_INVALID_ARG;
+    }
+    if (strcmp(second, "set") == 0) {
+        third = next_token(cursor);
+        fourth = next_token(cursor);
+        fifth = next_token(cursor);
+        if (third == 0 || fourth == 0 || fifth == 0 ||
+            parse_i32(third, &point_id) != SYS_OK || point_id < 0 ||
+            point_id > UINT16_MAX ||
+            parse_config_field(fourth, &command->argument.config_patch.field) !=
+                SYS_OK ||
+            parse_i32(fifth, &value) != SYS_OK || next_token(cursor) != 0) {
+            return ERR_INVALID_ARG;
+        }
+        command->id = CLI_COMMAND_CONFIG_SET;
+        command->argument.config_patch.point_id = (uint16_t)point_id;
+        command->argument.config_patch.value = value;
+        return SYS_OK;
+    }
+    return ERR_UNSUPPORTED;
+}
+
+static status_t parse_ui(char *second, char **cursor, cli_command_t *command)
+{
+    char *third;
+
+    if (strcmp(second, "page") != 0) {
+        return ERR_UNSUPPORTED;
+    }
+    third = next_token(cursor);
+    command->id = CLI_COMMAND_UI_PAGE;
+    return third != 0 && next_token(cursor) == 0
+               ? parse_page(third, &command->argument.ui_page)
+               : ERR_INVALID_ARG;
+}
+
+static status_t parse_ota(char *second, char **cursor, cli_command_t *command)
+{
+    if (strcmp(second, "status") == 0) {
+        command->id = CLI_COMMAND_OTA_STATUS;
+    } else if (strcmp(second, "check") == 0) {
+        command->id = CLI_COMMAND_OTA_CHECK;
+    } else if (strcmp(second, "start") == 0) {
+        command->id = CLI_COMMAND_OTA_START;
+    } else if (strcmp(second, "apply") == 0) {
+        command->id = CLI_COMMAND_OTA_APPLY;
+    } else if (strcmp(second, "cancel") == 0) {
+        command->id = CLI_COMMAND_OTA_CANCEL;
+    } else {
+        return ERR_UNSUPPORTED;
+    }
+    return next_token(cursor) == 0 ? SYS_OK : ERR_INVALID_ARG;
+}
+
+static status_t parse_power(char *second, char **cursor, cli_command_t *command)
+{
+    char *third;
+    char *fourth;
+
+    if (strcmp(second, "status") == 0) {
+        command->id = CLI_COMMAND_POWER_STATUS;
+    } else if (strcmp(second, "stats") == 0) {
+        command->id = CLI_COMMAND_POWER_STATS;
+    } else if (strcmp(second, "lock") == 0) {
+        command->id = CLI_COMMAND_POWER_LOCK;
+    } else if (strcmp(second, "stop") == 0) {
+        third = next_token(cursor);
+        fourth = next_token(cursor);
+        if (parse_u32(third, &command->argument.power_duration_ms) != SYS_OK ||
+            fourth == 0 || strcmp(fourth, "CONFIRM") != 0 ||
+            next_token(cursor) != 0) {
+            return ERR_INVALID_ARG;
+        }
+        command->id = CLI_COMMAND_POWER_STOP;
+        return SYS_OK;
+    } else if (strcmp(second, "standby") == 0) {
+        third = next_token(cursor);
+        if (third == 0 || strcmp(third, "CONFIRM") != 0 ||
+            next_token(cursor) != 0) {
+            return ERR_INVALID_ARG;
+        }
+        command->id = CLI_COMMAND_POWER_STANDBY;
+        return SYS_OK;
+    } else if (strcmp(second, "cancel") == 0) {
+        command->id = CLI_COMMAND_POWER_CANCEL;
+    } else {
+        return ERR_UNSUPPORTED;
+    }
+    return next_token(cursor) == 0 ? SYS_OK : ERR_INVALID_ARG;
+}
+
+static status_t parse_fault(char *second, char **cursor, cli_command_t *command)
+{
+    char *third;
+    char *fourth;
+
+    if (strcmp(second, "show") == 0) {
+        command->id = CLI_COMMAND_FAULT_SHOW;
+        return next_token(cursor) == 0 ? SYS_OK : ERR_INVALID_ARG;
+    }
+    if (strcmp(second, "clear") == 0) {
+        command->id = CLI_COMMAND_FAULT_CLEAR;
+        return next_token(cursor) == 0 ? SYS_OK : ERR_INVALID_ARG;
+    }
+    if (strcmp(second, "inject") == 0) {
+        third = next_token(cursor);
+        fourth = next_token(cursor);
+        if (third == 0 || fourth == 0 || strcmp(fourth, "CONFIRM") != 0 ||
+            next_token(cursor) != 0) {
+            return ERR_INVALID_ARG;
+        }
+        if (strcmp(third, "hardfault") == 0) {
+            command->argument.fault_injection = FAULT_INJECTION_HARDFAULT;
+        } else if (strcmp(third, "watchdog") == 0) {
+            command->argument.fault_injection = FAULT_INJECTION_WATCHDOG;
+        } else {
+            return ERR_UNSUPPORTED;
+        }
+        command->id = CLI_COMMAND_FAULT_INJECT;
+        return SYS_OK;
+    }
+    return ERR_UNSUPPORTED;
+}
+
+typedef struct {
+    const char *first;
+    const char *second;
+    cli_command_id_t id;
+} simple_cli_command_t;
+
+static const simple_cli_command_t simple_commands[] = {
+    {"help", 0, CLI_COMMAND_HELP},
+    {"?", 0, CLI_COMMAND_HELP},
+    {"status", 0, CLI_COMMAND_STATUS},
+    {"sensor", "list", CLI_COMMAND_SENSOR_LIST},
+    {"mqtt", "status", CLI_COMMAND_MQTT_STATUS},
+    {"storage", "status", CLI_COMMAND_STORAGE_STATUS},
+    {"slot", "status", CLI_COMMAND_SLOT_STATUS}};
+
+static const struct {
+    const char *name;
+    status_t (*parse)(char *second, char **cursor, cli_command_t *command);
+} command_parsers[] = {
+    {"rtos", parse_rtos},
+    {"alarm", parse_alarm},
+    {"config", parse_config},
+    {"ui", parse_ui},
+    {"ota", parse_ota},
+    {"power", parse_power},
+    {"fault", parse_fault},
+};
+
+status_t cli_parse_command(char *line, cli_command_t *command)
+{
+    char *cursor = line;
+    char *first;
+    char *second;
+    size_t i;
 
     if (line == 0 || command == 0) {
         return ERR_INVALID_ARG;
@@ -131,173 +327,30 @@ status_t cli_parse_command(char *line, cli_command_t *command)
     if (first == 0) {
         return ERR_INVALID_ARG;
     }
-    if (strcmp(first, "help") == 0 || strcmp(first, "?") == 0) {
-        command->id = CLI_COMMAND_HELP;
-        return next_token(&cursor) == 0 ? SYS_OK : ERR_INVALID_ARG;
-    }
-    if (strcmp(first, "status") == 0) {
-        command->id = CLI_COMMAND_STATUS;
-        return next_token(&cursor) == 0 ? SYS_OK : ERR_INVALID_ARG;
-    }
-    if (strcmp(first, "rtos") == 0) {
-        second = next_token(&cursor);
-        if (second == 0) {
-            command->id = CLI_COMMAND_RTOS;
-            return SYS_OK;
-        }
-        if (strcmp(second, "task") == 0) {
-            command->id = CLI_COMMAND_RTOS_TASK;
-        } else if (strcmp(second, "queue") == 0) {
-            command->id = CLI_COMMAND_RTOS_QUEUE;
-        } else if (strcmp(second, "runtime") == 0) {
-            command->id = CLI_COMMAND_RTOS_RUNTIME;
-        } else if (strcmp(second, "timing") == 0) {
-            command->id = CLI_COMMAND_RTOS_TIMING;
-        } else {
-            return ERR_UNSUPPORTED;
-        }
-        return next_token(&cursor) == 0 ? SYS_OK : ERR_INVALID_ARG;
-    }
     second = next_token(&cursor);
-    if (strcmp(first, "sensor") == 0 && second != 0 &&
-        strcmp(second, "list") == 0) {
-        command->id = CLI_COMMAND_SENSOR_LIST;
-        return next_token(&cursor) == 0 ? SYS_OK : ERR_INVALID_ARG;
-    }
-    if (strcmp(first, "alarm") == 0 && second != 0) {
-        if (strcmp(second, "list") == 0) {
-            command->id = CLI_COMMAND_ALARM_LIST;
+    for (i = 0u; i < sizeof(simple_commands) / sizeof(simple_commands[0]);
+         ++i) {
+        const simple_cli_command_t *entry = &simple_commands[i];
+        if (strcmp(first, entry->first) != 0) {
+            continue;
+        }
+        if (entry->second == 0) {
+            command->id = entry->id;
+            return second == 0 ? SYS_OK : ERR_INVALID_ARG;
+        }
+        if (second != 0 && strcmp(second, entry->second) == 0) {
+            command->id = entry->id;
             return next_token(&cursor) == 0 ? SYS_OK : ERR_INVALID_ARG;
         }
-        if (strcmp(second, "ack") == 0) {
-            third = next_token(&cursor);
-            command->id = CLI_COMMAND_ALARM_ACK;
-            return parse_u32(third, &command->argument.alarm_event_id) ==
-                       SYS_OK && next_token(&cursor) == 0
-                ? SYS_OK : ERR_INVALID_ARG;
-        }
+        return ERR_UNSUPPORTED;
     }
-    if (strcmp(first, "mqtt") == 0 && second != 0 &&
-        strcmp(second, "status") == 0) {
-        command->id = CLI_COMMAND_MQTT_STATUS;
-        return next_token(&cursor) == 0 ? SYS_OK : ERR_INVALID_ARG;
-    }
-    if (strcmp(first, "storage") == 0 && second != 0 &&
-        strcmp(second, "status") == 0) {
-        command->id = CLI_COMMAND_STORAGE_STATUS;
-        return next_token(&cursor) == 0 ? SYS_OK : ERR_INVALID_ARG;
-    }
-    if (strcmp(first, "config") == 0 && second != 0) {
-        if (strcmp(second, "show") == 0) {
-            command->id = CLI_COMMAND_CONFIG_SHOW;
-            return next_token(&cursor) == 0 ? SYS_OK : ERR_INVALID_ARG;
-        }
-        if (strcmp(second, "set") == 0) {
-            third = next_token(&cursor);
-            fourth = next_token(&cursor);
-            fifth = next_token(&cursor);
-            if (third == 0 || fourth == 0 || fifth == 0 ||
-                parse_i32(third, &point_id) != SYS_OK || point_id < 0 ||
-                point_id > UINT16_MAX ||
-                parse_config_field(fourth,
-                    &command->argument.config_patch.field) != SYS_OK ||
-                parse_i32(fifth, &value) != SYS_OK ||
-                next_token(&cursor) != 0) {
-                return ERR_INVALID_ARG;
-            }
-            command->id = CLI_COMMAND_CONFIG_SET;
-            command->argument.config_patch.point_id = (uint16_t)point_id;
-            command->argument.config_patch.value = value;
-            return SYS_OK;
-        }
-    }
-    if (strcmp(first, "ui") == 0 && second != 0 &&
-        strcmp(second, "page") == 0) {
-        third = next_token(&cursor);
-        command->id = CLI_COMMAND_UI_PAGE;
-        return third != 0 && next_token(&cursor) == 0
-            ? parse_page(third, &command->argument.ui_page)
-            : ERR_INVALID_ARG;
-    }
-    if (strcmp(first, "ota") == 0 && second != 0) {
-        if (strcmp(second, "status") == 0) {
-            command->id = CLI_COMMAND_OTA_STATUS;
-        } else if (strcmp(second, "check") == 0) {
-            command->id = CLI_COMMAND_OTA_CHECK;
-        } else if (strcmp(second, "start") == 0) {
-            command->id = CLI_COMMAND_OTA_START;
-        } else if (strcmp(second, "apply") == 0) {
-            command->id = CLI_COMMAND_OTA_APPLY;
-        } else if (strcmp(second, "cancel") == 0) {
-            command->id = CLI_COMMAND_OTA_CANCEL;
-        } else {
-            return ERR_UNSUPPORTED;
-        }
-        return next_token(&cursor) == 0 ? SYS_OK : ERR_INVALID_ARG;
-    }
-    if (strcmp(first, "power") == 0 && second != 0) {
-        if (strcmp(second, "status") == 0) {
-            command->id = CLI_COMMAND_POWER_STATUS;
-        } else if (strcmp(second, "stats") == 0) {
-            command->id = CLI_COMMAND_POWER_STATS;
-        } else if (strcmp(second, "lock") == 0) {
-            command->id = CLI_COMMAND_POWER_LOCK;
-        } else if (strcmp(second, "stop") == 0) {
-            third = next_token(&cursor);
-            fourth = next_token(&cursor);
-            if (parse_u32(third, &command->argument.power_duration_ms) !=
-                    SYS_OK || fourth == 0 ||
-                strcmp(fourth, "CONFIRM") != 0 ||
-                next_token(&cursor) != 0) {
-                return ERR_INVALID_ARG;
-            }
-            command->id = CLI_COMMAND_POWER_STOP;
-            return SYS_OK;
-        } else if (strcmp(second, "standby") == 0) {
-            third = next_token(&cursor);
-            if (third == 0 || strcmp(third, "CONFIRM") != 0 ||
-                next_token(&cursor) != 0) {
-                return ERR_INVALID_ARG;
-            }
-            command->id = CLI_COMMAND_POWER_STANDBY;
-            return SYS_OK;
-        } else if (strcmp(second, "cancel") == 0) {
-            command->id = CLI_COMMAND_POWER_CANCEL;
-        } else {
-            return ERR_UNSUPPORTED;
-        }
-        return next_token(&cursor) == 0 ? SYS_OK : ERR_INVALID_ARG;
-    }
-    if (strcmp(first, "slot") == 0 && second != 0 &&
-        strcmp(second, "status") == 0) {
-        command->id = CLI_COMMAND_SLOT_STATUS;
-        return next_token(&cursor) == 0 ? SYS_OK : ERR_INVALID_ARG;
-    }
-    if (strcmp(first, "fault") == 0 && second != 0) {
-        if (strcmp(second, "show") == 0) {
-            command->id = CLI_COMMAND_FAULT_SHOW;
-            return next_token(&cursor) == 0 ? SYS_OK : ERR_INVALID_ARG;
-        }
-        if (strcmp(second, "clear") == 0) {
-            command->id = CLI_COMMAND_FAULT_CLEAR;
-            return next_token(&cursor) == 0 ? SYS_OK : ERR_INVALID_ARG;
-        }
-        if (strcmp(second, "inject") == 0) {
-            third = next_token(&cursor);
-            fourth = next_token(&cursor);
-            if (third == 0 || fourth == 0 || strcmp(fourth, "CONFIRM") != 0 ||
-                next_token(&cursor) != 0) {
-                return ERR_INVALID_ARG;
-            }
-            if (strcmp(third, "hardfault") == 0) {
-                command->argument.fault_injection = FAULT_INJECTION_HARDFAULT;
-            } else if (strcmp(third, "watchdog") == 0) {
-                command->argument.fault_injection = FAULT_INJECTION_WATCHDOG;
-            } else {
+    for (i = 0u; i < sizeof(command_parsers) / sizeof(command_parsers[0]);
+         ++i) {
+        if (strcmp(first, command_parsers[i].name) == 0) {
+            if (second == 0 && strcmp(first, "rtos") != 0) {
                 return ERR_UNSUPPORTED;
             }
-            command->id = CLI_COMMAND_FAULT_INJECT;
-            return SYS_OK;
+            return command_parsers[i].parse(second, &cursor, command);
         }
     }
     return ERR_UNSUPPORTED;
@@ -305,8 +358,8 @@ status_t cli_parse_command(char *line, cli_command_t *command)
 
 static status_t write_text(cli_subsystem_t *subsystem, const char *text)
 {
-    return cli_transport_write(subsystem->transport, (const uint8_t *)text,
-                               strlen(text), 1000u);
+    return cli_transport_write(
+        subsystem->transport, (const uint8_t *)text, strlen(text), 1000u);
 }
 
 static status_t execute_line(cli_subsystem_t *subsystem)
@@ -323,15 +376,14 @@ static status_t execute_line(cli_subsystem_t *subsystem)
         return status;
     }
     memset(response, 0, sizeof(response));
-    status = subsystem->command_handler(subsystem->command_context,
-                                        &command, response,
-                                        sizeof(response));
+    status = subsystem->command_handler(
+        subsystem->command_context, &command, response, sizeof(response));
+    response[sizeof(response) - 1u] = '\0';
     subsystem->health.commands_executed++;
     if (response[0] != '\0') {
         (void)write_text(subsystem, response);
     }
-    (void)write_text(subsystem, status == SYS_OK ? "\r\n> "
-                                                 : "\r\nERR\r\n> ");
+    (void)write_text(subsystem, status == SYS_OK ? "\r\n> " : "\r\nERR\r\n> ");
     return status;
 }
 
@@ -360,17 +412,18 @@ status_t cli_subsystem_start(cli_subsystem_t *subsystem)
     }
     status = cli_transport_init(subsystem->transport);
     if (status == SYS_OK) {
-        status = write_text(subsystem,
-            "\r\nIndustrial Gateway CLI ready; type help\r\n> ");
+        status = write_text(
+            subsystem, "\r\nIndustrial Gateway CLI ready; type help\r\n> ");
     }
     subsystem->health.initialized = status == SYS_OK ? 1u : 0u;
     subsystem->health.last_error = status;
     return status;
 }
 
-status_t cli_subsystem_set_command_handler(
-    cli_subsystem_t *subsystem, cli_command_handler_t command_handler,
-    void *command_context)
+status_t
+cli_subsystem_set_command_handler(cli_subsystem_t *subsystem,
+                                  cli_command_handler_t command_handler,
+                                  void *command_context)
 {
     if (subsystem == 0 || command_handler == 0) {
         return ERR_INVALID_ARG;
@@ -380,8 +433,7 @@ status_t cli_subsystem_set_command_handler(
     return SYS_OK;
 }
 
-status_t cli_subsystem_process(cli_subsystem_t *subsystem,
-                               uint32_t timeout_ms)
+status_t cli_subsystem_process(cli_subsystem_t *subsystem, uint32_t timeout_ms)
 {
     uint8_t data[32];
     size_t length = 0u;
@@ -391,8 +443,8 @@ status_t cli_subsystem_process(cli_subsystem_t *subsystem,
     if (subsystem == 0 || subsystem->health.initialized == 0u) {
         return ERR_DEVICE_NOT_READY;
     }
-    status = cli_transport_read(subsystem->transport, data, sizeof(data),
-                                &length, timeout_ms);
+    status = cli_transport_read(
+        subsystem->transport, data, sizeof(data), &length, timeout_ms);
     if (status == ERR_TIMEOUT) {
         return SYS_OK;
     }
@@ -404,6 +456,12 @@ status_t cli_subsystem_process(cli_subsystem_t *subsystem,
     for (i = 0u; i < length; ++i) {
         char ch = (char)data[i];
 
+        if (subsystem->discard_line != 0u) {
+            if (ch == '\r' || ch == '\n') {
+                subsystem->discard_line = 0u;
+            }
+            continue;
+        }
         if (ch == '\r' || ch == '\n') {
             if (subsystem->line_length != 0u) {
                 subsystem->health.lines_received++;
@@ -422,6 +480,7 @@ status_t cli_subsystem_process(cli_subsystem_t *subsystem,
                 subsystem->line[subsystem->line_length++] = ch;
             } else {
                 subsystem->line_length = 0u;
+                subsystem->discard_line = 1u;
                 subsystem->health.overflows++;
                 (void)write_text(subsystem, "\r\nERR line too long\r\n> ");
             }

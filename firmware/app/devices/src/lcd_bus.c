@@ -2,12 +2,11 @@
 
 #include <string.h>
 
-status_t lcd_bus_construct(lcd_bus_t *bus, const lcd_bus_ops_t *ops,
-                           void *context)
+status_t
+lcd_bus_construct(lcd_bus_t *bus, const lcd_bus_ops_t *ops, void *context)
 {
     if (bus == 0 || ops == 0 || ops->write_command == 0 ||
-        ops->write_data == 0 || ops->read_data == 0 ||
-        ops->write_pixels == 0) {
+        ops->write_data == 0 || ops->read_data == 0 || ops->write_pixels == 0) {
         return ERR_INVALID_ARG;
     }
     memset(bus, 0, sizeof(*bus));
@@ -33,14 +32,15 @@ status_t lcd_bus_write_data(lcd_bus_t *bus, uint16_t data)
     return bus->ops->write_data(bus->context, data);
 }
 
-status_t lcd_bus_read_register(lcd_bus_t *bus, uint16_t command,
-                               uint16_t *data, size_t word_count)
+status_t lcd_bus_read_register(lcd_bus_t *bus,
+                               uint16_t command,
+                               uint16_t *data,
+                               size_t word_count)
 {
     size_t i;
     status_t status;
 
-    if (bus == 0 || data == 0 || word_count == 0u ||
-        bus->initialized == 0u) {
+    if (bus == 0 || data == 0 || word_count == 0u || bus->initialized == 0u) {
         return ERR_INVALID_ARG;
     }
     status = lcd_bus_write_command(bus, command);
@@ -50,8 +50,8 @@ status_t lcd_bus_read_register(lcd_bus_t *bus, uint16_t command,
     return status;
 }
 
-status_t lcd_bus_write_pixels(lcd_bus_t *bus, const uint16_t *pixels,
-                              size_t pixel_count)
+status_t
+lcd_bus_write_pixels(lcd_bus_t *bus, const uint16_t *pixels, size_t pixel_count)
 {
     if (bus == 0 || pixels == 0 || pixel_count == 0u ||
         bus->initialized == 0u) {

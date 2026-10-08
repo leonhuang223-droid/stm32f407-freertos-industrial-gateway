@@ -2,23 +2,22 @@
 
 #include <string.h>
 
-static const uint16_t measurement_commands[] = {
-    0x2416u, 0x240Bu, 0x2400u
-};
+static const uint16_t measurement_commands[] = {0x2416u, 0x240Bu, 0x2400u};
 
-static const uint8_t measurement_delays_ms[] = { 5u, 7u, 16u };
+static const uint8_t measurement_delays_ms[] = {5u, 7u, 16u};
 
 static status_t init_impl(sht30_t *device);
-static status_t sample_impl(sht30_t *device, uint32_t now_ms,
+static status_t sample_impl(sht30_t *device,
+                            uint32_t now_ms,
                             gateway_measurement_t *out_measurements,
-                            size_t capacity, size_t *out_count);
+                            size_t capacity,
+                            size_t *out_count);
 static status_t suspend_impl(sht30_t *device);
 static status_t resume_impl(sht30_t *device);
 static status_t self_test_impl(sht30_t *device);
 
 static const sht30_ops_t sht30_ops = {
-    init_impl, sample_impl, suspend_impl, resume_impl, self_test_impl
-};
+    init_impl, sample_impl, suspend_impl, resume_impl, self_test_impl};
 
 uint8_t sht30_crc8(const uint8_t *data, size_t length)
 {
@@ -32,9 +31,8 @@ uint8_t sht30_crc8(const uint8_t *data, size_t length)
     for (i = 0u; i < length; ++i) {
         crc ^= data[i];
         for (bit = 0u; bit < 8u; ++bit) {
-            crc = (crc & 0x80u) != 0u
-                ? (uint8_t)((crc << 1u) ^ 0x31u)
-                : (uint8_t)(crc << 1u);
+            crc = (crc & 0x80u) != 0u ? (uint8_t)((crc << 1u) ^ 0x31u)
+                                      : (uint8_t)(crc << 1u);
         }
     }
     return crc;
@@ -42,12 +40,13 @@ uint8_t sht30_crc8(const uint8_t *data, size_t length)
 
 static status_t write_command(sht30_t *device, uint16_t command)
 {
-    uint8_t bytes[2] = { (uint8_t)(command >> 8u), (uint8_t)command };
-    return i2c_bus_write(device->bus, device->config.address,
-                         bytes, sizeof(bytes));
+    uint8_t bytes[2] = {(uint8_t)(command >> 8u), (uint8_t)command};
+    return i2c_bus_write(
+        device->bus, device->config.address, bytes, sizeof(bytes));
 }
 
-static void prepare_measurements(const sht30_t *device, uint32_t now_ms,
+static void prepare_measurements(const sht30_t *device,
+                                 uint32_t now_ms,
                                  gateway_measurement_t *measurements)
 {
     memset(measurements, 0, 2u * sizeof(*measurements));
@@ -65,8 +64,8 @@ static void prepare_measurements(const sht30_t *device, uint32_t now_ms,
     measurements[1].error = ERR_DEVICE_NOT_READY;
 }
 
-status_t sht30_construct(sht30_t *device, i2c_bus_t *bus,
-                         const sht30_config_t *config)
+status_t
+sht30_construct(sht30_t *device, i2c_bus_t *bus, const sht30_config_t *config)
 {
     if (device == 0 || bus == 0 || bus->initialized == 0u || config == 0 ||
         (config->address != 0x44u && config->address != 0x45u) ||
@@ -84,14 +83,15 @@ status_t sht30_construct(sht30_t *device, i2c_bus_t *bus,
 
 static status_t self_test_impl(sht30_t *device)
 {
-    uint8_t command[2] = { 0xF3u, 0x2Du };
+    uint8_t command[2] = {0xF3u, 0x2Du};
     uint8_t status_bytes[3];
     status_t status = i2c_bus_write_read(
-        device->bus, device->config.address, command, sizeof(command),
-        status_bytes, sizeof(status_bytes));
+        device->bus,
+        device->config.address,
+        &(const i2c_transfer_t){
+            command, sizeof(command), status_bytes, sizeof(status_bytes)});
 
-    if (status == SYS_OK &&
-        sht30_crc8(status_bytes, 2u) != status_bytes[2]) {
+    if (status == SYS_OK && sht30_crc8(status_bytes, 2u) != status_bytes[2]) {
         status = ERR_CRC;
     }
     return status;
@@ -115,9 +115,11 @@ static status_t init_impl(sht30_t *device)
     return status;
 }
 
-static status_t sample_impl(sht30_t *device, uint32_t now_ms,
+static status_t sample_impl(sht30_t *device,
+                            uint32_t now_ms,
                             gateway_measurement_t *out_measurements,
-                            size_t capacity, size_t *out_count)
+                            size_t capacity,
+                            size_t *out_count)
 {
     uint8_t data[6];
     uint16_t raw_temperature;
@@ -132,17 +134,16 @@ static status_t sample_impl(sht30_t *device, uint32_t now_ms,
     if (device->health.initialized == 0u || device->health.suspended != 0u) {
         return ERR_DEVICE_NOT_READY;
     }
-    status = write_command(
-        device, measurement_commands[device->config.repeatability]);
+    status = write_command(device,
+                           measurement_commands[device->config.repeatability]);
     if (status == SYS_OK) {
         i2c_bus_delay(device->bus,
                       measurement_delays_ms[device->config.repeatability]);
-        status = i2c_bus_read(device->bus, device->config.address,
-                              data, sizeof(data));
+        status = i2c_bus_read(
+            device->bus, device->config.address, data, sizeof(data));
     }
-    if (status == SYS_OK &&
-        (sht30_crc8(data, 2u) != data[2] ||
-         sht30_crc8(&data[3], 2u) != data[5])) {
+    if (status == SYS_OK && (sht30_crc8(data, 2u) != data[2] ||
+                             sht30_crc8(&data[3], 2u) != data[5])) {
         status = ERR_CRC;
     }
     if (status != SYS_OK) {
@@ -185,36 +186,40 @@ static status_t resume_impl(sht30_t *device)
 
 status_t sht30_init(sht30_t *device)
 {
-    return device != 0 && device->ops != 0
-        ? device->ops->init(device) : ERR_INVALID_ARG;
+    return device != 0 && device->ops != 0 ? device->ops->init(device)
+                                           : ERR_INVALID_ARG;
 }
 
-status_t sht30_sample(sht30_t *device, uint32_t now_ms,
+status_t sht30_sample(sht30_t *device,
+                      uint32_t now_ms,
                       gateway_measurement_t *out_measurements,
-                      size_t capacity, size_t *out_count)
+                      size_t capacity,
+                      size_t *out_count)
 {
     return device != 0 && device->ops != 0 && out_measurements != 0
-        ? device->ops->sample(device, now_ms, out_measurements,
-                              capacity, out_count)
-        : ERR_INVALID_ARG;
+               ? device->ops->sample(
+                     device, now_ms, out_measurements, capacity, out_count)
+               : ERR_INVALID_ARG;
 }
 
 status_t sht30_suspend(sht30_t *device)
 {
     return device != 0 && device->ops != 0 && device->health.initialized != 0u
-        ? device->ops->suspend(device) : ERR_DEVICE_NOT_READY;
+               ? device->ops->suspend(device)
+               : ERR_DEVICE_NOT_READY;
 }
 
 status_t sht30_resume(sht30_t *device)
 {
     return device != 0 && device->ops != 0 && device->health.initialized != 0u
-        ? device->ops->resume(device) : ERR_DEVICE_NOT_READY;
+               ? device->ops->resume(device)
+               : ERR_DEVICE_NOT_READY;
 }
 
 status_t sht30_self_test(sht30_t *device)
 {
-    return device != 0 && device->ops != 0
-        ? device->ops->self_test(device) : ERR_INVALID_ARG;
+    return device != 0 && device->ops != 0 ? device->ops->self_test(device)
+                                           : ERR_INVALID_ARG;
 }
 
 status_t sht30_get_health(const sht30_t *device,

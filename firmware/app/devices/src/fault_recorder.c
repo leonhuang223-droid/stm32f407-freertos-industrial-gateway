@@ -7,8 +7,8 @@
 
 static status_t compute_crc(const fault_record_t *record, uint32_t *crc)
 {
-    return crc32_compute((const uint8_t *)record,
-                         offsetof(fault_record_t, crc32), crc);
+    return crc32_compute(
+        (const uint8_t *)record, offsetof(fault_record_t, crc32), crc);
 }
 
 status_t fault_record_finalize(fault_record_t *record)
@@ -47,13 +47,16 @@ status_t fault_record_validate(const fault_record_t *record)
 
 const char *fault_origin_name(fault_origin_t origin)
 {
-    static const char *const names[FAULT_ORIGIN_COUNT] = {
-        "none", "hardfault", "memmanage", "busfault", "usagefault",
-        "watchdog-injection"
-    };
+    static const char *const names[FAULT_ORIGIN_COUNT] = {"none",
+                                                          "hardfault",
+                                                          "memmanage",
+                                                          "busfault",
+                                                          "usagefault",
+                                                          "watchdog-injection"};
 
     return (unsigned int)origin < FAULT_ORIGIN_COUNT
-        ? names[(unsigned int)origin] : "unknown";
+               ? names[(unsigned int)origin]
+               : "unknown";
 }
 
 status_t fault_recorder_refresh(fault_recorder_t *recorder)
@@ -81,8 +84,8 @@ status_t fault_recorder_refresh(fault_recorder_t *recorder)
             recorder->health.invalid_records++;
         }
     }
-    recorder->health.last_error = status == ERR_DEVICE_NOT_READY
-        ? SYS_OK : status;
+    recorder->health.last_error =
+        status == ERR_DEVICE_NOT_READY ? SYS_OK : status;
     return status;
 }
 

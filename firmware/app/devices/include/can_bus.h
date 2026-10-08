@@ -32,7 +32,8 @@ typedef struct {
     status_t (*start)(void *context);
     status_t (*send)(void *context, const can_frame_t *frame);
     status_t (*receive)(void *context, can_frame_t *frame);
-    status_t (*wait_event)(void *context, uint32_t timeout_ms,
+    status_t (*wait_event)(void *context,
+                           uint32_t timeout_ms,
                            uint32_t *event_bits);
     status_t (*get_state)(void *context, can_bus_state_t *state);
     status_t (*recover)(void *context);
@@ -47,13 +48,13 @@ typedef struct {
     uint8_t suspended;
 } can_bus_t;
 
-status_t can_bus_construct(can_bus_t *bus, const can_bus_ops_t *ops,
-                           void *context);
+status_t
+can_bus_construct(can_bus_t *bus, const can_bus_ops_t *ops, void *context);
 status_t can_bus_start(can_bus_t *bus);
 status_t can_bus_send(can_bus_t *bus, const can_frame_t *frame);
 status_t can_bus_receive(can_bus_t *bus, can_frame_t *frame);
-status_t can_bus_wait_event(can_bus_t *bus, uint32_t timeout_ms,
-                            uint32_t *event_bits);
+status_t
+can_bus_wait_event(can_bus_t *bus, uint32_t timeout_ms, uint32_t *event_bits);
 status_t can_bus_get_state(can_bus_t *bus, can_bus_state_t *state);
 status_t can_bus_recover(can_bus_t *bus);
 status_t can_bus_suspend(can_bus_t *bus);

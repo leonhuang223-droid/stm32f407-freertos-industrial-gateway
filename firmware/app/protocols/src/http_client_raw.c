@@ -59,8 +59,8 @@ static status_t set_error(http_client_raw_t *client, status_t status)
     return status;
 }
 
-static status_t copy_part(const char *start, size_t length, char *out,
-                          size_t capacity)
+static status_t
+copy_part(const char *start, size_t length, char *out, size_t capacity)
 {
     if (start == 0 || out == 0 || capacity == 0u || length >= capacity) {
         return ERR_NO_MEMORY;
@@ -70,8 +70,7 @@ static status_t copy_part(const char *start, size_t length, char *out,
     return SYS_OK;
 }
 
-static status_t parse_port(const char *text, size_t length,
-                           uint16_t *out_port)
+static status_t parse_port(const char *text, size_t length, uint16_t *out_port)
 {
     uint32_t value = 0u;
     size_t index;
@@ -137,10 +136,27 @@ static const uint8_t *find_header_end(const uint8_t *buffer, size_t length)
     return 0;
 }
 
-static status_t build_request(const char *host, uint16_t port,
-                              const char *path, uint8_t *buffer,
-                              size_t capacity, size_t *out_length)
+/** Synchronous request; pointed-to buffers remain caller-owned.
+ * @author 兆鸣嵌入式
+ */
+typedef struct {
+    uint8_t *buffer;
+    size_t capacity;
+    size_t *out_length;
+} http_request_output_t;
+
+static status_t build_request(const char *host,
+                              uint16_t port,
+                              const char *path,
+                              const http_request_output_t *parameters)
 {
+    if (parameters == 0) {
+        return ERR_INVALID_ARG;
+    }
+    uint8_t *buffer = parameters->buffer;
+    size_t capacity = parameters->capacity;
+    size_t *out_length = parameters->out_length;
+
     char port_text[8];
     int written;
 
@@ -148,15 +164,21 @@ static status_t build_request(const char *host, uint16_t port,
         return ERR_INVALID_ARG;
     }
     if (port == 80u) {
-        written = snprintf((char *)buffer, capacity,
-            "GET %s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n",
-            path, host);
+        written =
+            snprintf((char *)buffer,
+                     capacity,
+                     "GET %s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n",
+                     path,
+                     host);
     } else {
-        (void)snprintf(port_text, sizeof(port_text), ":%u",
-                       (unsigned int)port);
-        written = snprintf((char *)buffer, capacity,
+        (void)snprintf(port_text, sizeof(port_text), ":%u", (unsigned int)port);
+        written = snprintf(
+            (char *)buffer,
+            capacity,
             "GET %s HTTP/1.1\r\nHost: %s%s\r\nConnection: close\r\n\r\n",
-            path, host, port_text);
+            path,
+            host,
+            port_text);
     }
     if (written < 0 || (size_t)written >= capacity) {
         return ERR_NO_MEMORY;
@@ -178,10 +200,12 @@ static status_t read_header(http_client_raw_t *client)
         if (accumulated_length == sizeof(accumulated)) {
             return set_error(client, ERR_NO_MEMORY);
         }
-        status = network_transport_receive(
-            client->transport, &accumulated[accumulated_length],
-            sizeof(accumulated) - accumulated_length, &length,
-            client->receive_timeout_ms);
+        status =
+            network_transport_receive(client->transport,
+                                      &accumulated[accumulated_length],
+                                      sizeof(accumulated) - accumulated_length,
+                                      &length,
+                                      client->receive_timeout_ms);
         if (status != SYS_OK) {
             return set_error(client, status);
         }
@@ -232,10 +256,17 @@ status_t http_client_construct(http_client_raw_t *client,
     return SYS_OK;
 }
 
-status_t http_parse_url(const char *url, char *out_host, size_t host_size,
-                        char *out_path, size_t path_size,
-                        uint16_t *out_port)
+status_t http_parse_url(const char *url, const http_url_output_t *parameters)
 {
+    if (parameters == 0) {
+        return ERR_INVALID_ARG;
+    }
+    char *out_host = parameters->out_host;
+    size_t host_size = parameters->host_size;
+    char *out_path = parameters->out_path;
+    size_t path_size = parameters->path_size;
+    uint16_t *out_port = parameters->out_port;
+
     const char *host;
     const char *path;
     const char *colon = 0;
@@ -272,21 +303,18 @@ status_t http_parse_url(const char *url, char *out_host, size_t host_size,
         return status;
     }
     if (colon != 0) {
-        status = parse_port(colon + 1u,
-                            (size_t)(path - colon - 1u), out_port);
+        status = parse_port(colon + 1u, (size_t)(path - colon - 1u), out_port);
         if (status != SYS_OK) {
             return status;
         }
     } else {
         *out_port = 80u;
     }
-    return *path == '\0'
-        ? copy_part("/", 1u, out_path, path_size)
-        : copy_part(path, strlen(path), out_path, path_size);
+    return *path == '\0' ? copy_part("/", 1u, out_path, path_size)
+                         : copy_part(path, strlen(path), out_path, path_size);
 }
 
-status_t http_parse_header(const char *header,
-                           http_header_info_t *out_info)
+status_t http_parse_header(const char *header, http_header_info_t *out_info)
 {
     const char *line;
     const char *status_text;
@@ -301,14 +329,13 @@ status_t http_parse_header(const char *header,
         return ERR_HTTP;
     }
     status_text = header + 9u;
-    if (status_text[0] < '0' || status_text[0] > '9' ||
-        status_text[1] < '0' || status_text[1] > '9' ||
-        status_text[2] < '0' || status_text[2] > '9') {
+    if (status_text[0] < '0' || status_text[0] > '9' || status_text[1] < '0' ||
+        status_text[1] > '9' || status_text[2] < '0' || status_text[2] > '9') {
         return ERR_HTTP;
     }
-    out_info->status_code = (uint16_t)(
-        (status_text[0] - '0') * 100 +
-        (status_text[1] - '0') * 10 + status_text[2] - '0');
+    out_info->status_code =
+        (uint16_t)((status_text[0] - '0') * 100 + (status_text[1] - '0') * 10 +
+                   status_text[2] - '0');
     if (out_info->status_code != 200u) {
         return ERR_HTTP;
     }
@@ -321,8 +348,8 @@ status_t http_parse_header(const char *header,
 
         if (starts_with_ci(line, "Content-Length:")) {
             if (have_length != 0u ||
-                parse_content_length(line + 15u,
-                                     &out_info->content_length) != SYS_OK) {
+                parse_content_length(line + 15u, &out_info->content_length) !=
+                    SYS_OK) {
                 return ERR_HTTP;
             }
             have_length = 1u;
@@ -344,15 +371,25 @@ status_t http_open_get(http_client_raw_t *client, const char *url)
     if (client == 0 || client->transport == 0 || url == 0) {
         return ERR_INVALID_ARG;
     }
+    if (client->connected != 0u) {
+        status = http_close(client);
+        if (status != SYS_OK) {
+            return set_error(client, status);
+        }
+    }
     memset(&client->header, 0, sizeof(client->header));
     memset(&client->stats, 0, sizeof(client->stats));
     client->body_stash_length = 0u;
     client->body_stash_offset = 0u;
-    status = http_parse_url(url, host, sizeof(host), path, sizeof(path),
-                            &port);
+    status = http_parse_url(url,
+                            &(const http_url_output_t){
+                                host, sizeof(host), path, sizeof(path), &port});
     if (status == SYS_OK) {
-        status = build_request(host, port, path, request, sizeof(request),
-                               &request_length);
+        status = build_request(host,
+                               port,
+                               path,
+                               &(const http_request_output_t){
+                                   request, sizeof(request), &request_length});
     }
     if (status == SYS_OK) {
         status = network_transport_connect(client->transport, host, port);
@@ -361,8 +398,7 @@ status_t http_open_get(http_client_raw_t *client, const char *url)
         return set_error(client, status);
     }
     client->connected = 1u;
-    status = network_transport_send(client->transport, request,
-                                    request_length);
+    status = network_transport_send(client->transport, request, request_length);
     if (status == SYS_OK) {
         status = read_header(client);
     }
@@ -372,8 +408,10 @@ status_t http_open_get(http_client_raw_t *client, const char *url)
     return set_error(client, status);
 }
 
-status_t http_read_body_chunk(http_client_raw_t *client, uint8_t *buffer,
-                              size_t buffer_size, size_t *out_length)
+status_t http_read_body_chunk(http_client_raw_t *client,
+                              uint8_t *buffer,
+                              size_t buffer_size,
+                              size_t *out_length)
 {
     uint32_t remaining;
     size_t length = 0u;
@@ -382,8 +420,8 @@ status_t http_read_body_chunk(http_client_raw_t *client, uint8_t *buffer,
     if (out_length != 0) {
         *out_length = 0u;
     }
-    if (client == 0 || buffer == 0 || buffer_size == 0u ||
-        out_length == 0 || client->connected == 0u) {
+    if (client == 0 || buffer == 0 || buffer_size == 0u || out_length == 0 ||
+        client->connected == 0u) {
         return ERR_INVALID_ARG;
     }
     if (client->stats.bytes_received >= client->header.content_length) {
@@ -391,22 +429,23 @@ status_t http_read_body_chunk(http_client_raw_t *client, uint8_t *buffer,
     }
     remaining = client->header.content_length - client->stats.bytes_received;
     if (client->body_stash_offset < client->body_stash_length) {
-        size_t stashed = client->body_stash_length -
-                         client->body_stash_offset;
+        size_t stashed = client->body_stash_length - client->body_stash_offset;
 
         length = stashed < buffer_size ? stashed : buffer_size;
         if (length > (size_t)remaining) {
             return set_error(client, ERR_HTTP);
         }
-        memcpy(buffer, &client->body_stash[client->body_stash_offset],
-               length);
+        memcpy(buffer, &client->body_stash[client->body_stash_offset], length);
         client->body_stash_offset += length;
     } else {
-        size_t capacity = (size_t)remaining < buffer_size
-            ? (size_t)remaining : buffer_size;
+        size_t capacity =
+            (size_t)remaining < buffer_size ? (size_t)remaining : buffer_size;
 
-        status = network_transport_receive(client->transport, buffer,
-            capacity, &length, client->receive_timeout_ms);
+        status = network_transport_receive(client->transport,
+                                           buffer,
+                                           capacity,
+                                           &length,
+                                           client->receive_timeout_ms);
         if (status != SYS_OK) {
             return set_error(client, status);
         }
@@ -420,8 +459,10 @@ status_t http_read_body_chunk(http_client_raw_t *client, uint8_t *buffer,
     return set_error(client, SYS_OK);
 }
 
-status_t http_get_document(http_client_raw_t *client, const char *url,
-                           uint8_t *buffer, size_t buffer_size,
+status_t http_get_document(http_client_raw_t *client,
+                           const char *url,
+                           uint8_t *buffer,
+                           size_t buffer_size,
                            size_t *out_length)
 {
     status_t status;
@@ -443,9 +484,11 @@ status_t http_get_document(http_client_raw_t *client, const char *url,
     while (client->stats.bytes_received < client->header.content_length) {
         size_t length = 0u;
 
-        status = http_read_body_chunk(
-            client, &buffer[client->stats.bytes_received],
-            buffer_size - client->stats.bytes_received, &length);
+        status =
+            http_read_body_chunk(client,
+                                 &buffer[client->stats.bytes_received],
+                                 buffer_size - client->stats.bytes_received,
+                                 &length);
         if (status != SYS_OK || length == 0u) {
             (void)http_close(client);
             return set_error(client, status != SYS_OK ? status : ERR_HTTP);
@@ -464,10 +507,13 @@ status_t http_close(http_client_raw_t *client)
         return ERR_INVALID_ARG;
     }
     status = client->connected != 0u
-        ? network_transport_close(client->transport) : SYS_OK;
-    client->connected = 0u;
-    client->body_stash_length = 0u;
-    client->body_stash_offset = 0u;
+                 ? network_transport_close(client->transport)
+                 : SYS_OK;
+    if (status == SYS_OK) {
+        client->connected = 0u;
+        client->body_stash_length = 0u;
+        client->body_stash_offset = 0u;
+    }
     return status;
 }
 

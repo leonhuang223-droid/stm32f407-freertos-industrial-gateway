@@ -5,10 +5,7 @@
 
 #include <stdint.h>
 
-typedef enum {
-    INPUT_STATE_RELEASED = 0,
-    INPUT_STATE_PRESSED
-} input_state_t;
+typedef enum { INPUT_STATE_RELEASED = 0, INPUT_STATE_PRESSED } input_state_t;
 
 typedef struct {
     int16_t x;
@@ -42,7 +39,8 @@ typedef struct {
 
 status_t input_device_construct(input_device_t *input,
                                 const input_device_ops_t *ops,
-                                void *context, uint16_t width,
+                                void *context,
+                                uint16_t width,
                                 uint16_t height);
 status_t input_device_init(input_device_t *input);
 status_t input_device_read(input_device_t *input, input_sample_t *sample);

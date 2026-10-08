@@ -14,8 +14,7 @@ static int port_complete(const w25q_boot_port_t *port)
 
 static status_t finish_transaction(w25q_boot_t *device, status_t status)
 {
-    status_t deselect_status = device->port.select(
-        device->port.context, 0);
+    status_t deselect_status = device->port.select(device->port.context, 0);
 
     return status == SYS_OK ? deselect_status : status;
 }
@@ -43,13 +42,11 @@ static status_t read_jedec_id(w25q_boot_t *device, uint32_t *out_id)
             device->port.context, &command, sizeof(command));
     }
     if (status == SYS_OK) {
-        status = device->port.receive(
-            device->port.context, id, sizeof(id));
+        status = device->port.receive(device->port.context, id, sizeof(id));
     }
     status = finish_transaction(device, status);
     if (status == SYS_OK) {
-        *out_id = ((uint32_t)id[0] << 16u) |
-                  ((uint32_t)id[1] << 8u) |
+        *out_id = ((uint32_t)id[0] << 16u) | ((uint32_t)id[1] << 8u) |
                   (uint32_t)id[2];
     }
     return status;
@@ -85,8 +82,10 @@ status_t w25q_boot_init(w25q_boot_t *device,
     return SYS_OK;
 }
 
-status_t w25q_boot_read(w25q_boot_t *device, uint32_t address,
-                        uint8_t *buffer, size_t length)
+status_t w25q_boot_read(w25q_boot_t *device,
+                        uint32_t address,
+                        uint8_t *buffer,
+                        size_t length)
 {
     uint8_t command[4];
     status_t status;
@@ -107,8 +106,7 @@ status_t w25q_boot_read(w25q_boot_t *device, uint32_t address,
             device->port.context, command, sizeof(command));
     }
     if (status == SYS_OK) {
-        status = device->port.receive(
-            device->port.context, buffer, length);
+        status = device->port.receive(device->port.context, buffer, length);
     }
     return finish_transaction(device, status);
 }

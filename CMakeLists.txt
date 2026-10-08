@@ -50,6 +50,10 @@ if(BUILD_HOST_TESTS)
     add_subdirectory(tests/host/ota_update)
     if(Python3_Interpreter_FOUND)
         add_test(
+            NAME embedded_c_style.python
+            COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/embedded_c_audit.py")
+        add_test(
             NAME firmware_tools.python
             COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/python/test_f407_fwtools.py")

@@ -15,8 +15,10 @@ typedef struct {
 
 typedef struct {
     status_t (*init)(void *context, uint16_t width, uint16_t height);
-    status_t (*flush)(void *context, const display_area_t *area,
-                      const uint16_t *pixels, size_t pixel_count);
+    status_t (*flush)(void *context,
+                      const display_area_t *area,
+                      const uint16_t *pixels,
+                      size_t pixel_count);
     status_t (*set_backlight)(void *context, uint8_t percent);
     status_t (*suspend)(void *context);
     status_t (*resume)(void *context);
@@ -42,12 +44,14 @@ typedef struct {
 
 status_t display_device_construct(display_device_t *display,
                                   const display_device_ops_t *ops,
-                                  void *context, uint16_t width,
+                                  void *context,
+                                  uint16_t width,
                                   uint16_t height);
 status_t display_device_init(display_device_t *display);
 status_t display_device_flush(display_device_t *display,
                               const display_area_t *area,
-                              const uint16_t *pixels, size_t pixel_count);
+                              const uint16_t *pixels,
+                              size_t pixel_count);
 status_t display_device_set_backlight(display_device_t *display,
                                       uint8_t percent);
 status_t display_device_suspend(display_device_t *display);

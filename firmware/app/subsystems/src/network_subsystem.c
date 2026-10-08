@@ -27,15 +27,16 @@ static int valid_identifier(const char *text)
 
         if (!((value >= 'a' && value <= 'z') ||
               (value >= 'A' && value <= 'Z') ||
-              (value >= '0' && value <= '9') || value == '-' ||
-              value == '_')) {
+              (value >= '0' && value <= '9') || value == '-' || value == '_')) {
             return 0;
         }
     }
     return 1;
 }
 
-static int copy_text(char *destination, size_t capacity, const char *source,
+static int copy_text(char *destination,
+                     size_t capacity,
+                     const char *source,
                      int allow_empty)
 {
     size_t length;
@@ -51,23 +52,25 @@ static int copy_text(char *destination, size_t capacity, const char *source,
     return 1;
 }
 
-static void set_offline(network_subsystem_t *subsystem, uint32_t now_ms,
-                        status_t reason)
+static void
+set_offline(network_subsystem_t *subsystem, uint32_t now_ms, status_t reason)
 {
-    (void)network_transport_suspend(subsystem->transport);
+    status_t cleanup_status = network_transport_suspend(subsystem->transport);
     subsystem->health.state = NETWORK_STATE_OFFLINE;
     subsystem->health.mqtt_ready = 0u;
     subsystem->health.disconnects++;
-    subsystem->health.last_error = reason;
-    subsystem->health.retry_due_ms = deadline_after(
-        now_ms, subsystem->current_reconnect_ms);
+    subsystem->health.last_error =
+        cleanup_status == SYS_OK ? reason : cleanup_status;
+    subsystem->health.retry_due_ms =
+        deadline_after(now_ms, subsystem->current_reconnect_ms);
     if (subsystem->current_reconnect_ms < subsystem->reconnect_max_ms) {
         uint32_t doubled = subsystem->current_reconnect_ms * 2u;
 
         subsystem->current_reconnect_ms =
             doubled < subsystem->current_reconnect_ms ||
-            doubled > subsystem->reconnect_max_ms
-                ? subsystem->reconnect_max_ms : doubled;
+                    doubled > subsystem->reconnect_max_ms
+                ? subsystem->reconnect_max_ms
+                : doubled;
     }
     subsystem->mqtt_rx_length = 0u;
     subsystem->connect_phase = 0u;
@@ -78,8 +81,26 @@ static void set_offline(network_subsystem_t *subsystem, uint32_t now_ms,
     }
 }
 
+static status_t prepare_transport(network_subsystem_t *subsystem,
+                                  uint32_t now_ms)
+{
+    status_t status;
+
+    /* Retry a failed close before reusing a connection from the old session. */
+    if (network_transport_is_connected(subsystem->transport) != 0u) {
+        status = network_transport_close(subsystem->transport);
+        if (status != SYS_OK) {
+            return status;
+        }
+    }
+    return network_transport_is_initialized(subsystem->transport) != 0u
+               ? SYS_OK
+               : network_transport_init_step(subsystem->transport, now_ms);
+}
+
 static status_t append_mqtt_rx(network_subsystem_t *subsystem,
-                               const uint8_t *data, size_t length)
+                               const uint8_t *data,
+                               size_t length)
 {
     if (length > sizeof(subsystem->mqtt_rx) - subsystem->mqtt_rx_length) {
         return ERR_NO_MEMORY;
@@ -102,9 +123,11 @@ static status_t receive_connack(network_subsystem_t *subsystem)
         size_t incoming_length = 0u;
         size_t consumed = 0u;
         mqtt_packet_view_t packet;
-        status_t status = network_transport_receive(
-            subsystem->transport, incoming, sizeof(incoming),
-            &incoming_length, slice);
+        status_t status = network_transport_receive(subsystem->transport,
+                                                    incoming,
+                                                    sizeof(incoming),
+                                                    &incoming_length,
+                                                    slice);
 
         if (status != SYS_OK) {
             if (status == ERR_TIMEOUT) {
@@ -116,9 +139,8 @@ static status_t receive_connack(network_subsystem_t *subsystem)
         if (status != SYS_OK) {
             return status;
         }
-        status = mqtt_decode_packet(subsystem->mqtt_rx,
-                                    subsystem->mqtt_rx_length,
-                                    &packet, &consumed);
+        status = mqtt_decode_packet(
+            subsystem->mqtt_rx, subsystem->mqtt_rx_length, &packet, &consumed);
         if (status == ERR_DEVICE_NOT_READY) {
             continue;
         }
@@ -126,12 +148,89 @@ static status_t receive_connack(network_subsystem_t *subsystem)
             packet.return_code != 0u) {
             return ERR_PROTOCOL;
         }
-        memmove(subsystem->mqtt_rx, &subsystem->mqtt_rx[consumed],
+        memmove(subsystem->mqtt_rx,
+                &subsystem->mqtt_rx[consumed],
                 subsystem->mqtt_rx_length - consumed);
         subsystem->mqtt_rx_length -= consumed;
         return SYS_OK;
     }
     return ERR_TIMEOUT;
+}
+
+static status_t send_mqtt_connect(network_subsystem_t *subsystem,
+                                  uint32_t now_ms)
+{
+    status_t status;
+
+    mqtt_connect_options_t options;
+    uint8_t packet[NETWORK_MQTT_PACKET_MAX];
+    size_t length = 0u;
+    memset(&options, 0, sizeof(options));
+    options.client_id = subsystem->client_id;
+    options.username = subsystem->username[0] != '\0' ? subsystem->username : 0;
+    options.password = subsystem->password[0] != '\0' ? subsystem->password : 0;
+    options.keep_alive_seconds = subsystem->keep_alive_seconds;
+    options.clean_session = 1u;
+    status = mqtt_encode_connect(&options, packet, sizeof(packet), &length);
+    if (status == SYS_OK) {
+        status = network_transport_send(subsystem->transport, packet, length);
+    }
+    if (status == SYS_OK) {
+        subsystem->mqtt_rx_length = 0u;
+        subsystem->connect_deadline_ms = now_ms + subsystem->connect_timeout_ms;
+        subsystem->connect_phase = 4u;
+        return ERR_IN_PROGRESS;
+    }
+    return status;
+}
+
+static status_t wait_mqtt_connack(network_subsystem_t *subsystem,
+                                  uint32_t now_ms)
+{
+    status_t status;
+
+    uint8_t incoming[128];
+    size_t length = 0u;
+    size_t consumed = 0u;
+    mqtt_packet_view_t packet;
+    status = network_transport_receive(
+        subsystem->transport, incoming, sizeof(incoming), &length, 10u);
+    if (status == SYS_OK) {
+        status = append_mqtt_rx(subsystem, incoming, length);
+        if (status == SYS_OK) {
+            status = mqtt_decode_packet(subsystem->mqtt_rx,
+                                        subsystem->mqtt_rx_length,
+                                        &packet,
+                                        &consumed);
+        }
+        if (status == SYS_OK) {
+            if (packet.type != MQTT_PACKET_CONNACK ||
+                packet.return_code != 0u) {
+                status = ERR_PROTOCOL;
+                return status;
+            }
+            memmove(subsystem->mqtt_rx,
+                    subsystem->mqtt_rx + consumed,
+                    subsystem->mqtt_rx_length - consumed);
+            subsystem->mqtt_rx_length -= consumed;
+            subsystem->connect_phase = 0u;
+            subsystem->health.state = NETWORK_STATE_MQTT_READY;
+            subsystem->health.mqtt_ready = 1u;
+            subsystem->health.successful_connections++;
+            subsystem->health.last_error = SYS_OK;
+            subsystem->health.retry_due_ms = 0u;
+            subsystem->current_reconnect_ms = subsystem->reconnect_initial_ms;
+            subsystem->last_activity_ms = now_ms;
+            return SYS_OK;
+        }
+    }
+    if (status == ERR_TIMEOUT || status == ERR_DEVICE_NOT_READY) {
+        if (!time_reached(now_ms, subsystem->connect_deadline_ms)) {
+            return ERR_IN_PROGRESS;
+        }
+        status = ERR_TIMEOUT;
+    }
+    return status;
 }
 
 static status_t connect_mqtt_step(network_subsystem_t *subsystem,
@@ -145,8 +244,7 @@ static status_t connect_mqtt_step(network_subsystem_t *subsystem,
     }
     switch (subsystem->connect_phase) {
     case 1u:
-        status = subsystem->transport->initialized != 0u ? SYS_OK :
-            network_transport_init_step(subsystem->transport, now_ms);
+        status = prepare_transport(subsystem, now_ms);
         if (status == SYS_OK) {
             subsystem->connect_phase = 2u;
             return ERR_IN_PROGRESS;
@@ -154,123 +252,63 @@ static status_t connect_mqtt_step(network_subsystem_t *subsystem,
         break;
     case 2u:
         status = network_transport_connect_step(subsystem->transport,
-            subsystem->broker_host, subsystem->broker_port, now_ms);
+                                                subsystem->broker_host,
+                                                subsystem->broker_port,
+                                                now_ms);
         if (status == SYS_OK) {
             subsystem->connect_phase = 3u;
             return ERR_IN_PROGRESS;
         }
         break;
     case 3u:
-        {
-            mqtt_connect_options_t options;
-            uint8_t packet[NETWORK_MQTT_PACKET_MAX];
-            size_t length = 0u;
-            memset(&options, 0, sizeof(options));
-            options.client_id = subsystem->client_id;
-            options.username = subsystem->username[0] != '\0' ? subsystem->username : 0;
-            options.password = subsystem->password[0] != '\0' ? subsystem->password : 0;
-            options.keep_alive_seconds = subsystem->keep_alive_seconds;
-            options.clean_session = 1u;
-            status = mqtt_encode_connect(&options, packet, sizeof(packet), &length);
-            if (status == SYS_OK) {
-                status = network_transport_send(subsystem->transport, packet, length);
-            }
-            if (status == SYS_OK) {
-                subsystem->mqtt_rx_length = 0u;
-                subsystem->connect_deadline_ms = now_ms + subsystem->connect_timeout_ms;
-                subsystem->connect_phase = 4u;
-                return ERR_IN_PROGRESS;
-            }
-        }
+        status = send_mqtt_connect(subsystem, now_ms);
         break;
     case 4u:
-        {
-            uint8_t incoming[128];
-            size_t length = 0u;
-            size_t consumed = 0u;
-            mqtt_packet_view_t packet;
-            status = network_transport_receive(subsystem->transport,
-                incoming, sizeof(incoming), &length, 10u);
-            if (status == SYS_OK) {
-                status = append_mqtt_rx(subsystem, incoming, length);
-                if (status == SYS_OK) {
-                    status = mqtt_decode_packet(subsystem->mqtt_rx,
-                        subsystem->mqtt_rx_length, &packet, &consumed);
-                }
-                if (status == SYS_OK) {
-                    if (packet.type != MQTT_PACKET_CONNACK || packet.return_code != 0u) {
-                        status = ERR_PROTOCOL;
-                        break;
-                    }
-                    memmove(subsystem->mqtt_rx, subsystem->mqtt_rx + consumed,
-                            subsystem->mqtt_rx_length - consumed);
-                    subsystem->mqtt_rx_length -= consumed;
-                    subsystem->connect_phase = 0u;
-                    subsystem->health.state = NETWORK_STATE_MQTT_READY;
-                    subsystem->health.mqtt_ready = 1u;
-                    subsystem->health.successful_connections++;
-                    subsystem->health.last_error = SYS_OK;
-                    subsystem->health.retry_due_ms = 0u;
-                    subsystem->current_reconnect_ms = subsystem->reconnect_initial_ms;
-                    subsystem->last_activity_ms = now_ms;
-                    return SYS_OK;
-                }
-            }
-            if (status == ERR_TIMEOUT || status == ERR_DEVICE_NOT_READY) {
-                if (!time_reached(now_ms, subsystem->connect_deadline_ms)) {
-                    return ERR_IN_PROGRESS;
-                }
-                status = ERR_TIMEOUT;
-            }
-        }
+        status = wait_mqtt_connack(subsystem, now_ms);
         break;
-    default: status = ERR_PROTOCOL; break;
+    default:
+        status = ERR_PROTOCOL;
+        break;
     }
-    if (status != ERR_IN_PROGRESS) {
+    if (status != SYS_OK && status != ERR_IN_PROGRESS) {
         set_offline(subsystem, now_ms, status);
     }
     return status;
 }
 
-static status_t connect_mqtt(network_subsystem_t *subsystem,
-                             uint32_t now_ms)
+static status_t connect_mqtt(network_subsystem_t *subsystem, uint32_t now_ms)
 {
     mqtt_connect_options_t options;
     uint8_t packet[NETWORK_MQTT_PACKET_MAX];
     size_t packet_length = 0u;
     status_t status;
 
-    if (subsystem->transport->connect_steps != 0) {
+    if (network_transport_has_connect_steps(subsystem->transport) != 0u) {
         return connect_mqtt_step(subsystem, now_ms);
     }
     subsystem->health.connect_attempts++;
-    if (subsystem->transport->initialized == 0u) {
-        status = network_transport_init(subsystem->transport);
-        if (status != SYS_OK) {
-            set_offline(subsystem, now_ms, status);
-            return status;
-        }
+    status = prepare_transport(subsystem, now_ms);
+    if (status != SYS_OK) {
+        set_offline(subsystem, now_ms, status);
+        return status;
     }
-    status = network_transport_connect(subsystem->transport,
-                                       subsystem->broker_host,
-                                       subsystem->broker_port);
+    status = network_transport_connect(
+        subsystem->transport, subsystem->broker_host, subsystem->broker_port);
     if (status != SYS_OK) {
         set_offline(subsystem, now_ms, status);
         return status;
     }
     memset(&options, 0, sizeof(options));
     options.client_id = subsystem->client_id;
-    options.username = subsystem->username[0] != '\0'
-        ? subsystem->username : 0;
-    options.password = subsystem->password[0] != '\0'
-        ? subsystem->password : 0;
+    options.username = subsystem->username[0] != '\0' ? subsystem->username : 0;
+    options.password = subsystem->password[0] != '\0' ? subsystem->password : 0;
     options.keep_alive_seconds = subsystem->keep_alive_seconds;
     options.clean_session = 1u;
-    status = mqtt_encode_connect(&options, packet, sizeof(packet),
-                                 &packet_length);
+    status =
+        mqtt_encode_connect(&options, packet, sizeof(packet), &packet_length);
     if (status == SYS_OK) {
-        status = network_transport_send(subsystem->transport, packet,
-                                        packet_length);
+        status =
+            network_transport_send(subsystem->transport, packet, packet_length);
     }
     if (status == SYS_OK) {
         status = receive_connack(subsystem);
@@ -302,49 +340,72 @@ static uint16_t allocate_packet_id(network_subsystem_t *subsystem)
     return packet_id;
 }
 
+/** Synchronous request; pointed-to buffers remain caller-owned.
+ * @author 兆鸣嵌入式
+ */
+typedef struct {
+    size_t topic_capacity;
+    uint8_t *payload;
+    size_t payload_capacity;
+    size_t *payload_length;
+} network_payload_output_t;
+
 static status_t build_event_payload(const network_subsystem_t *subsystem,
                                     const gateway_network_event_t *event,
-                                    char *topic, size_t topic_capacity,
-                                    uint8_t *payload,
-                                    size_t payload_capacity,
-                                    size_t *payload_length)
+                                    char *topic,
+                                    const network_payload_output_t *parameters)
 {
+    if (parameters == 0) {
+        return ERR_INVALID_ARG;
+    }
+    size_t topic_capacity = parameters->topic_capacity;
+    uint8_t *payload = parameters->payload;
+    size_t payload_capacity = parameters->payload_capacity;
+    size_t *payload_length = parameters->payload_length;
+
     int topic_written;
     int payload_written;
 
     if (event->type == GATEWAY_NETWORK_ALARM) {
         const gateway_alarm_event_t *alarm = &event->payload.alarm;
 
-        topic_written = snprintf(topic, topic_capacity, "factory/%s/alarm",
-                                 subsystem->device_id);
-        payload_written = snprintf(
-            (char *)payload, payload_capacity,
-            "{\"device_id\":\"%s\",\"boot_id\":%lu,\"event_id\":%lu,"
-            "\"point_id\":%u,\"type\":%u,\"transition\":%u,"
-            "\"value\":%ld,\"threshold\":%ld,\"quality\":%u}",
-            subsystem->device_id, (unsigned long)subsystem->boot_id,
-            (unsigned long)alarm->event_id, (unsigned int)alarm->point_id,
-            (unsigned int)alarm->type, (unsigned int)alarm->transition,
-            (long)alarm->value, (long)alarm->threshold,
-            (unsigned int)alarm->quality);
+        topic_written = snprintf(
+            topic, topic_capacity, "factory/%s/alarm", subsystem->device_id);
+        payload_written =
+            snprintf((char *)payload,
+                     payload_capacity,
+                     "{\"device_id\":\"%s\",\"boot_id\":%lu,\"event_id\":%lu,"
+                     "\"point_id\":%u,\"type\":%u,\"transition\":%u,"
+                     "\"value\":%ld,\"threshold\":%ld,\"quality\":%u}",
+                     subsystem->device_id,
+                     (unsigned long)subsystem->boot_id,
+                     (unsigned long)alarm->event_id,
+                     (unsigned int)alarm->point_id,
+                     (unsigned int)alarm->type,
+                     (unsigned int)alarm->transition,
+                     (long)alarm->value,
+                     (long)alarm->threshold,
+                     (unsigned int)alarm->quality);
     } else if (event->type == GATEWAY_NETWORK_TELEMETRY) {
-        const gateway_measurement_t *measurement =
-            &event->payload.measurement;
+        const gateway_measurement_t *measurement = &event->payload.measurement;
 
-        topic_written = snprintf(topic, topic_capacity,
+        topic_written = snprintf(topic,
+                                 topic_capacity,
                                  "factory/%s/telemetry",
                                  subsystem->device_id);
-        payload_written = snprintf(
-            (char *)payload, payload_capacity,
-            "{\"device_id\":\"%s\",\"boot_id\":%lu,\"sequence\":%lu,"
-            "\"point_id\":%u,\"value\":%ld,\"unit\":%u,"
-            "\"quality\":%u}",
-            subsystem->device_id, (unsigned long)subsystem->boot_id,
-            (unsigned long)event->sequence,
-            (unsigned int)measurement->point_id,
-            (long)measurement->engineering_value,
-            (unsigned int)measurement->unit,
-            (unsigned int)measurement->quality);
+        payload_written =
+            snprintf((char *)payload,
+                     payload_capacity,
+                     "{\"device_id\":\"%s\",\"boot_id\":%lu,\"sequence\":%lu,"
+                     "\"point_id\":%u,\"value\":%ld,\"unit\":%u,"
+                     "\"quality\":%u}",
+                     subsystem->device_id,
+                     (unsigned long)subsystem->boot_id,
+                     (unsigned long)event->sequence,
+                     (unsigned int)measurement->point_id,
+                     (long)measurement->engineering_value,
+                     (unsigned int)measurement->unit,
+                     (unsigned int)measurement->quality);
     } else {
         return ERR_UNSUPPORTED;
     }
@@ -356,8 +417,7 @@ static status_t build_event_payload(const network_subsystem_t *subsystem,
     return SYS_OK;
 }
 
-static status_t send_inflight(network_subsystem_t *subsystem,
-                              uint32_t now_ms)
+static status_t send_inflight(network_subsystem_t *subsystem, uint32_t now_ms)
 {
     char topic[NETWORK_TOPIC_MAX];
     uint8_t payload[NETWORK_PAYLOAD_MAX];
@@ -365,25 +425,33 @@ static status_t send_inflight(network_subsystem_t *subsystem,
     size_t payload_length = 0u;
     size_t packet_length = 0u;
     status_t status = build_event_payload(
-        subsystem, &subsystem->inflight_event, topic, sizeof(topic),
-        payload, sizeof(payload), &payload_length);
+        subsystem,
+        &subsystem->inflight_event,
+        topic,
+        &(const network_payload_output_t){
+            sizeof(topic), payload, sizeof(payload), &payload_length});
 
     if (status == SYS_OK) {
         status = mqtt_encode_publish_qos1(
-            topic, payload, payload_length, subsystem->inflight_packet_id,
-            subsystem->inflight_duplicate, packet, sizeof(packet),
-            &packet_length);
+            topic,
+            &(const mqtt_publish_request_t){payload,
+                                            payload_length,
+                                            subsystem->inflight_packet_id,
+                                            subsystem->inflight_duplicate,
+                                            packet,
+                                            sizeof(packet),
+                                            &packet_length});
     }
     if (status == SYS_OK) {
-        status = network_transport_send(subsystem->transport, packet,
-                                        packet_length);
+        status =
+            network_transport_send(subsystem->transport, packet, packet_length);
     }
     if (status != SYS_OK) {
         set_offline(subsystem, now_ms, status);
         return status;
     }
-    subsystem->inflight_deadline_ms = deadline_after(
-        now_ms, subsystem->puback_timeout_ms);
+    subsystem->inflight_deadline_ms =
+        deadline_after(now_ms, subsystem->puback_timeout_ms);
     subsystem->last_activity_ms = now_ms;
     return SYS_OK;
 }
@@ -416,8 +484,8 @@ static status_t begin_next_publish(network_subsystem_t *subsystem,
 static void complete_inflight(network_subsystem_t *subsystem)
 {
     if (subsystem->inflight_alarm != 0u) {
-        subsystem->alarm_head = (uint8_t)(
-            (subsystem->alarm_head + 1u) % NETWORK_ALARM_BACKLOG);
+        subsystem->alarm_head =
+            (uint8_t)((subsystem->alarm_head + 1u) % NETWORK_ALARM_BACKLOG);
         subsystem->alarm_count--;
         subsystem->health.alarms_published++;
     } else {
@@ -436,8 +504,7 @@ static status_t handle_mqtt_packets(network_subsystem_t *subsystem,
     uint8_t incoming[128];
     size_t incoming_length = 0u;
     status_t status = network_transport_receive(
-        subsystem->transport, incoming, sizeof(incoming), &incoming_length,
-        1u);
+        subsystem->transport, incoming, sizeof(incoming), &incoming_length, 1u);
 
     if (status != SYS_OK && status != ERR_TIMEOUT) {
         set_offline(subsystem, now_ms, status);
@@ -456,9 +523,8 @@ static status_t handle_mqtt_packets(network_subsystem_t *subsystem,
         mqtt_packet_view_t packet;
         size_t consumed = 0u;
 
-        status = mqtt_decode_packet(subsystem->mqtt_rx,
-                                    subsystem->mqtt_rx_length,
-                                    &packet, &consumed);
+        status = mqtt_decode_packet(
+            subsystem->mqtt_rx, subsystem->mqtt_rx_length, &packet, &consumed);
         if (status == ERR_DEVICE_NOT_READY) {
             return SYS_OK;
         }
@@ -479,7 +545,8 @@ static status_t handle_mqtt_packets(network_subsystem_t *subsystem,
         } else if (packet.type == MQTT_PACKET_PINGRESP) {
             subsystem->ping_outstanding = 0u;
         }
-        memmove(subsystem->mqtt_rx, &subsystem->mqtt_rx[consumed],
+        memmove(subsystem->mqtt_rx,
+                &subsystem->mqtt_rx[consumed],
                 subsystem->mqtt_rx_length - consumed);
         subsystem->mqtt_rx_length -= consumed;
     }
@@ -498,57 +565,68 @@ static status_t maintain_keep_alive(network_subsystem_t *subsystem,
         }
         return SYS_OK;
     }
-    if (time_reached(now_ms, deadline_after(subsystem->last_activity_ms,
-                                             idle_limit))) {
+    if (time_reached(now_ms,
+                     deadline_after(subsystem->last_activity_ms, idle_limit))) {
         uint8_t packet[2];
         size_t length = 0u;
-        status_t status = mqtt_encode_pingreq(packet, sizeof(packet),
-                                              &length);
+        status_t status = mqtt_encode_pingreq(packet, sizeof(packet), &length);
 
         if (status == SYS_OK) {
-            status = network_transport_send(subsystem->transport, packet,
-                                            length);
+            status =
+                network_transport_send(subsystem->transport, packet, length);
         }
         if (status != SYS_OK) {
             set_offline(subsystem, now_ms, status);
             return status;
         }
         subsystem->ping_outstanding = 1u;
-        subsystem->ping_deadline_ms = deadline_after(
-            now_ms, subsystem->puback_timeout_ms);
+        subsystem->ping_deadline_ms =
+            deadline_after(now_ms, subsystem->puback_timeout_ms);
         subsystem->last_activity_ms = now_ms;
         subsystem->health.ping_requests++;
     }
     return SYS_OK;
 }
 
-status_t network_subsystem_construct(
-    network_subsystem_t *subsystem, network_transport_t *transport,
-    const network_subsystem_config_t *config)
+status_t network_subsystem_construct(network_subsystem_t *subsystem,
+                                     network_transport_t *transport,
+                                     const network_subsystem_config_t *config)
 {
     if (subsystem == 0 || transport == 0 || config == 0 ||
         !valid_identifier(config->device_id) ||
         !valid_identifier(config->client_id) || config->username == 0 ||
         config->password == 0 || config->broker_host == 0 ||
         config->broker_port == 0u || config->keep_alive_seconds == 0u ||
-        config->connect_timeout_ms == 0u ||
-        config->puback_timeout_ms == 0u ||
+        config->connect_timeout_ms == 0u || config->puback_timeout_ms == 0u ||
+        config->connect_timeout_ms > INT32_MAX ||
+        config->puback_timeout_ms > INT32_MAX ||
         config->reconnect_initial_ms == 0u ||
         config->reconnect_max_ms < config->reconnect_initial_ms ||
+        config->reconnect_max_ms > INT32_MAX ||
         config->publish_retry_limit == 0u) {
         return ERR_INVALID_ARG;
     }
     memset(subsystem, 0, sizeof(*subsystem));
-    if (!copy_text(subsystem->device_id, sizeof(subsystem->device_id),
-                   config->device_id, 0) ||
-        !copy_text(subsystem->client_id, sizeof(subsystem->client_id),
-                   config->client_id, 0) ||
-        !copy_text(subsystem->username, sizeof(subsystem->username),
-                   config->username, 1) ||
-        !copy_text(subsystem->password, sizeof(subsystem->password),
-                   config->password, 1) ||
-        !copy_text(subsystem->broker_host, sizeof(subsystem->broker_host),
-                   config->broker_host, 0)) {
+    if (!copy_text(subsystem->device_id,
+                   sizeof(subsystem->device_id),
+                   config->device_id,
+                   0) ||
+        !copy_text(subsystem->client_id,
+                   sizeof(subsystem->client_id),
+                   config->client_id,
+                   0) ||
+        !copy_text(subsystem->username,
+                   sizeof(subsystem->username),
+                   config->username,
+                   1) ||
+        !copy_text(subsystem->password,
+                   sizeof(subsystem->password),
+                   config->password,
+                   1) ||
+        !copy_text(subsystem->broker_host,
+                   sizeof(subsystem->broker_host),
+                   config->broker_host,
+                   0)) {
         return ERR_INVALID_ARG;
     }
     subsystem->transport = transport;
@@ -576,8 +654,9 @@ status_t network_subsystem_start(network_subsystem_t *subsystem,
     subsystem->health.state = NETWORK_STATE_OFFLINE;
     subsystem->health.retry_due_ms = now_ms;
     /* Start means accepted; hardware connection advances in process(). */
-    return subsystem->transport->connect_steps != 0
-        ? SYS_OK : connect_mqtt(subsystem, now_ms);
+    return network_transport_has_connect_steps(subsystem->transport) != 0u
+               ? SYS_OK
+               : connect_mqtt(subsystem, now_ms);
 }
 
 status_t network_subsystem_submit(network_subsystem_t *subsystem,
@@ -644,8 +723,7 @@ status_t network_subsystem_process(network_subsystem_t *subsystem,
     if (subsystem->inflight_active != 0u &&
         time_reached(now_ms, subsystem->inflight_deadline_ms)) {
         subsystem->health.puback_timeouts++;
-        if (subsystem->inflight_retries >=
-            subsystem->publish_retry_limit) {
+        if (subsystem->inflight_retries >= subsystem->publish_retry_limit) {
             set_offline(subsystem, now_ms, ERR_TIMEOUT);
             return ERR_TIMEOUT;
         }
@@ -713,8 +791,9 @@ status_t network_subsystem_resume(network_subsystem_t *subsystem,
     if (subsystem->health.state != NETWORK_STATE_STOPPED) {
         return SYS_OK;
     }
-    status = subsystem->transport->connect_steps != 0
-        ? SYS_OK : network_transport_resume(subsystem->transport);
+    status = network_transport_has_connect_steps(subsystem->transport) != 0u
+                 ? SYS_OK
+                 : network_transport_resume(subsystem->transport);
     if (status == SYS_OK) {
         subsystem->health.state = NETWORK_STATE_OFFLINE;
         subsystem->health.retry_due_ms = now_ms;
@@ -730,8 +809,9 @@ status_t network_subsystem_acquire_ota_lease(network_subsystem_t *subsystem,
 {
     uint8_t packet[2];
     size_t length = 0u;
+    status_t status;
 
-    if (subsystem == 0) {
+    if (subsystem == 0 || subsystem->transport == 0) {
         return ERR_INVALID_ARG;
     }
     if (subsystem->health.ota_lease_active != 0u) {
@@ -743,7 +823,11 @@ status_t network_subsystem_acquire_ota_lease(network_subsystem_t *subsystem,
     }
     network_transport_cancel_connect(subsystem->transport);
     subsystem->connect_phase = 0u;
-    (void)network_transport_close(subsystem->transport);
+    status = network_transport_close(subsystem->transport);
+    if (status != SYS_OK) {
+        set_offline(subsystem, now_ms, status);
+        return status;
+    }
     subsystem->health.state = NETWORK_STATE_OTA_LEASED;
     subsystem->health.mqtt_ready = 0u;
     subsystem->health.ota_lease_active = 1u;
@@ -760,8 +844,14 @@ status_t network_subsystem_acquire_ota_lease(network_subsystem_t *subsystem,
 status_t network_subsystem_release_ota_lease(network_subsystem_t *subsystem,
                                              uint32_t now_ms)
 {
+    status_t status;
     if (subsystem == 0 || subsystem->health.ota_lease_active == 0u) {
         return ERR_DEVICE_NOT_READY;
+    }
+    status = network_transport_close(subsystem->transport);
+    if (status != SYS_OK) {
+        subsystem->health.last_error = status;
+        return status;
     }
     subsystem->health.ota_lease_active = 0u;
     subsystem->health.state = NETWORK_STATE_OFFLINE;

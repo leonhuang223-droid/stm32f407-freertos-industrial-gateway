@@ -90,14 +90,16 @@ status_t power_manager_construct(power_manager_t *manager,
                                  const power_manager_config_t *config,
                                  uint32_t now_ms);
 status_t power_manager_acquire(power_manager_t *manager,
-                               power_lock_id_t lock, uint32_t now_ms);
+                               power_lock_id_t lock,
+                               uint32_t now_ms);
 status_t power_manager_release(power_manager_t *manager,
-                               power_lock_id_t lock, uint32_t now_ms);
+                               power_lock_id_t lock,
+                               uint32_t now_ms);
 power_mode_t power_manager_deepest_allowed(const power_manager_t *manager);
 status_t power_manager_set_policy(power_manager_t *manager,
-                                  power_policy_t policy, uint32_t now_ms);
-void power_manager_note_activity(power_manager_t *manager,
-                                 uint32_t now_ms);
+                                  power_policy_t policy,
+                                  uint32_t now_ms);
+void power_manager_note_activity(power_manager_t *manager, uint32_t now_ms);
 power_mode_t power_manager_evaluate(power_manager_t *manager,
                                     uint32_t now_ms,
                                     uint8_t alarm_active);

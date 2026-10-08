@@ -29,13 +29,13 @@ typedef struct {
     uint8_t initialized;
 } ota_staging_t;
 
-status_t ota_staging_construct(ota_staging_t *staging,
-                               storage_media_t *media);
+status_t ota_staging_construct(ota_staging_t *staging, storage_media_t *media);
 status_t ota_staging_begin(ota_staging_t *staging, size_t package_size);
-status_t ota_staging_erase_next(ota_staging_t *staging,
-                                uint8_t *out_complete);
-status_t ota_staging_write(ota_staging_t *staging, uint32_t offset,
-                           const uint8_t *data, size_t length);
+status_t ota_staging_erase_next(ota_staging_t *staging, uint8_t *out_complete);
+status_t ota_staging_write(ota_staging_t *staging,
+                           uint32_t offset,
+                           const uint8_t *data,
+                           size_t length);
 status_t ota_staging_commit_metadata(ota_staging_t *staging,
                                      const uint8_t *record,
                                      size_t record_size);

@@ -67,8 +67,8 @@ static status_t read_data(void *context, uint16_t *data)
     return SYS_OK;
 }
 
-static status_t write_pixels(void *context, const uint16_t *pixels,
-                             size_t pixel_count)
+static status_t
+write_pixels(void *context, const uint16_t *pixels, size_t pixel_count)
 {
     f407_lcd_bus_context_t *lcd = context;
     size_t i;
@@ -89,14 +89,14 @@ static void set_reset(void *context, uint8_t asserted)
     f407_lcd_bus_context_t *lcd = context;
 
     if (lcd != 0 && lcd->hardware_ready != 0u) {
-        HAL_GPIO_WritePin(GPIOF, GPIO_PIN_11,
-                         asserted != 0u ? GPIO_PIN_RESET : GPIO_PIN_SET);
+        HAL_GPIO_WritePin(
+            GPIOF, GPIO_PIN_11, asserted != 0u ? GPIO_PIN_RESET : GPIO_PIN_SET);
     }
 }
 
 static void configure_fsmc_gpio(void)
 {
-    GPIO_InitTypeDef gpio = { 0 };
+    GPIO_InitTypeDef gpio = {0};
 
     __HAL_RCC_GPIOD_CLK_ENABLE();
     __HAL_RCC_GPIOE_CLK_ENABLE();
@@ -108,29 +108,29 @@ static void configure_fsmc_gpio(void)
     gpio.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
     gpio.Alternate = GPIO_AF12_FSMC;
 
-    gpio.Pin = GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_4 | GPIO_PIN_5 |
-               GPIO_PIN_8 | GPIO_PIN_9 | GPIO_PIN_10 | GPIO_PIN_11 |
-               GPIO_PIN_12 | GPIO_PIN_13 | GPIO_PIN_14 | GPIO_PIN_15;
-    HAL_GPIO_Init(GPIOD, &gpio);
-
-    gpio.Pin = GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_7 | GPIO_PIN_8 |
+    gpio.Pin = GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_4 | GPIO_PIN_5 | GPIO_PIN_8 |
                GPIO_PIN_9 | GPIO_PIN_10 | GPIO_PIN_11 | GPIO_PIN_12 |
                GPIO_PIN_13 | GPIO_PIN_14 | GPIO_PIN_15;
+    HAL_GPIO_Init(GPIOD, &gpio);
+
+    gpio.Pin = GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_7 | GPIO_PIN_8 | GPIO_PIN_9 |
+               GPIO_PIN_10 | GPIO_PIN_11 | GPIO_PIN_12 | GPIO_PIN_13 |
+               GPIO_PIN_14 | GPIO_PIN_15;
     HAL_GPIO_Init(GPIOE, &gpio);
 
-    gpio.Pin = GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3 |
-               GPIO_PIN_4 | GPIO_PIN_5 | GPIO_PIN_12 | GPIO_PIN_13 |
-               GPIO_PIN_14 | GPIO_PIN_15;
+    gpio.Pin = GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3 | GPIO_PIN_4 |
+               GPIO_PIN_5 | GPIO_PIN_12 | GPIO_PIN_13 | GPIO_PIN_14 |
+               GPIO_PIN_15;
     HAL_GPIO_Init(GPIOF, &gpio);
 
-    gpio.Pin = GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3 |
-               GPIO_PIN_4 | GPIO_PIN_5 | GPIO_PIN_10 | GPIO_PIN_12;
+    gpio.Pin = GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3 | GPIO_PIN_4 |
+               GPIO_PIN_5 | GPIO_PIN_10 | GPIO_PIN_12;
     HAL_GPIO_Init(GPIOG, &gpio);
 }
 
 static void configure_control_gpio(void)
 {
-    GPIO_InitTypeDef gpio = { 0 };
+    GPIO_InitTypeDef gpio = {0};
 
     HAL_GPIO_WritePin(GPIOF, GPIO_PIN_11, GPIO_PIN_RESET);
     gpio.Pin = GPIO_PIN_11;
@@ -142,7 +142,7 @@ static void configure_control_gpio(void)
 
 static void configure_backlight_pwm(void)
 {
-    GPIO_InitTypeDef gpio = { 0 };
+    GPIO_InitTypeDef gpio = {0};
     uint32_t timer_clock = HAL_RCC_GetPCLK1Freq();
 
     __HAL_RCC_TIM14_CLK_ENABLE();
@@ -160,8 +160,7 @@ static void configure_backlight_pwm(void)
     TIM14->PSC = timer_clock / 1000000u - 1u;
     TIM14->ARR = F407_PWM_PERIOD_COUNTS - 1u;
     TIM14->CCR1 = 0u;
-    TIM14->CCMR1 = TIM_CCMR1_OC1M_1 | TIM_CCMR1_OC1M_2 |
-                   TIM_CCMR1_OC1PE;
+    TIM14->CCMR1 = TIM_CCMR1_OC1M_1 | TIM_CCMR1_OC1M_2 | TIM_CCMR1_OC1PE;
     TIM14->CCER = TIM_CCER_CC1E | TIM_CCER_CC1P;
     TIM14->EGR = TIM_EGR_UG;
     TIM14->CR1 = TIM_CR1_ARPE | TIM_CR1_CEN;
@@ -172,22 +171,24 @@ static void configure_fsmc_banks(void)
     __HAL_RCC_FSMC_CLK_ENABLE();
 
     FSMC_Bank1->BTCR[4] = FSMC_BCR1_MWID_0 | FSMC_BCR1_WREN;
-    FSMC_Bank1->BTCR[5] = (2u << FSMC_BTR1_ADDSET_Pos) |
-                              (8u << FSMC_BTR1_DATAST_Pos);
+    FSMC_Bank1->BTCR[5] =
+        (2u << FSMC_BTR1_ADDSET_Pos) | (8u << FSMC_BTR1_DATAST_Pos);
     FSMC_Bank1->BTCR[4] |= FSMC_BCR1_MBKEN;
 
     FSMC_Bank1->BTCR[6] = FSMC_BCR1_MWID_0 | FSMC_BCR1_WREN;
-    FSMC_Bank1->BTCR[7] = (1u << FSMC_BTR1_ADDSET_Pos) |
-                              (5u << FSMC_BTR1_DATAST_Pos);
+    FSMC_Bank1->BTCR[7] =
+        (1u << FSMC_BTR1_ADDSET_Pos) | (5u << FSMC_BTR1_DATAST_Pos);
     FSMC_Bank1->BTCR[6] |= FSMC_BCR1_MBKEN;
 }
 
 status_t f407_lcd_bus_configure(lcd_bus_t *bus)
 {
-    static const lcd_bus_ops_t ops = {
-        write_command, write_data, read_data, write_pixels,
-        set_reset, delay_ms
-    };
+    static const lcd_bus_ops_t ops = {write_command,
+                                      write_data,
+                                      read_data,
+                                      write_pixels,
+                                      set_reset,
+                                      delay_ms};
 
     if (bus == 0) {
         return ERR_INVALID_ARG;
@@ -214,15 +215,16 @@ status_t f407_lcd_backlight_set(uint8_t percent)
 
 status_t f407_external_sram_self_test(void)
 {
-    static const size_t offsets[] = {
-        0u, 1u, 127u, 1023u, 8191u, 32767u,
-        F407_SRAM_HALFWORD_COUNT / 2u,
-        F407_SRAM_HALFWORD_COUNT - 1u
-    };
+    static const size_t offsets[] = {0u,
+                                     1u,
+                                     127u,
+                                     1023u,
+                                     8191u,
+                                     32767u,
+                                     F407_SRAM_HALFWORD_COUNT / 2u,
+                                     F407_SRAM_HALFWORD_COUNT - 1u};
     static const uint16_t patterns[] = {
-        0x0000u, 0xFFFFu, 0xA5A5u, 0x5A5Au,
-        0x1357u, 0x2468u, 0x55AAu, 0xAA55u
-    };
+        0x0000u, 0xFFFFu, 0xA5A5u, 0x5A5Au, 0x1357u, 0x2468u, 0x55AAu, 0xAA55u};
     uint16_t saved[sizeof(offsets) / sizeof(offsets[0])];
     size_t i;
     status_t status = SYS_OK;
@@ -251,8 +253,8 @@ uint16_t *f407_external_draw_buffer(unsigned int index)
 {
     const size_t offset = (size_t)index * F407_EXTERNAL_DRAW_BUFFER_PIXELS;
 
-    if (index > 1u || offset + F407_EXTERNAL_DRAW_BUFFER_PIXELS >
-        F407_SRAM_HALFWORD_COUNT) {
+    if (index > 1u ||
+        offset + F407_EXTERNAL_DRAW_BUFFER_PIXELS > F407_SRAM_HALFWORD_COUNT) {
         return 0;
     }
     return (uint16_t *)&F407_SRAM_BASE[offset];

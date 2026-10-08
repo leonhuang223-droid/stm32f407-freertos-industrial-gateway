@@ -52,26 +52,27 @@ typedef struct {
     storage_health_t health;
 } storage_subsystem_t;
 
-status_t storage_subsystem_construct(
-    storage_subsystem_t *subsystem, storage_media_t *media,
-    const gateway_runtime_config_t *default_config);
+status_t
+storage_subsystem_construct(storage_subsystem_t *subsystem,
+                            storage_media_t *media,
+                            const gateway_runtime_config_t *default_config);
 status_t storage_subsystem_start(storage_subsystem_t *subsystem);
-status_t storage_subsystem_append_log(
-    storage_subsystem_t *subsystem,
-    const gateway_storage_log_request_t *request);
-status_t storage_subsystem_append_alarm(
-    storage_subsystem_t *subsystem,
-    const gateway_storage_alarm_request_t *request);
-status_t storage_subsystem_archive_fault(
-    storage_subsystem_t *subsystem, const fault_record_t *record);
-status_t storage_subsystem_load_latest_fault(
-    const storage_subsystem_t *subsystem, fault_record_t *record);
-status_t storage_subsystem_save_config(
-    storage_subsystem_t *subsystem,
-    const gateway_storage_config_request_t *request);
-status_t storage_subsystem_load_config(
-    const storage_subsystem_t *subsystem,
-    gateway_runtime_config_t *config);
+status_t
+storage_subsystem_append_log(storage_subsystem_t *subsystem,
+                             const gateway_storage_log_request_t *request);
+status_t
+storage_subsystem_append_alarm(storage_subsystem_t *subsystem,
+                               const gateway_storage_alarm_request_t *request);
+status_t storage_subsystem_archive_fault(storage_subsystem_t *subsystem,
+                                         const fault_record_t *record);
+status_t
+storage_subsystem_load_latest_fault(const storage_subsystem_t *subsystem,
+                                    fault_record_t *record);
+status_t
+storage_subsystem_save_config(storage_subsystem_t *subsystem,
+                              const gateway_storage_config_request_t *request);
+status_t storage_subsystem_load_config(const storage_subsystem_t *subsystem,
+                                       gateway_runtime_config_t *config);
 status_t storage_subsystem_power_down(storage_subsystem_t *subsystem);
 status_t storage_subsystem_wake(storage_subsystem_t *subsystem);
 status_t storage_subsystem_get_health(const storage_subsystem_t *subsystem,

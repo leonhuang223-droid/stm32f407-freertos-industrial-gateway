@@ -40,10 +40,20 @@ status_t fieldbus_subsystem_poll_modbus(fieldbus_subsystem_t *subsystem,
 status_t fieldbus_subsystem_wait_can(fieldbus_subsystem_t *subsystem,
                                      uint32_t timeout_ms,
                                      uint32_t *event_bits);
-status_t fieldbus_subsystem_process_can(fieldbus_subsystem_t *subsystem,
-                                        uint32_t event_bits, uint32_t now_ms,
-                                        gateway_measurement_t *measurements,
-                                        size_t capacity, size_t *count);
+/** Synchronous request; pointed-to buffers remain caller-owned.
+ * @author 兆鸣嵌入式
+ */
+typedef struct {
+    uint32_t event_bits;
+    uint32_t now_ms;
+    gateway_measurement_t *measurements;
+    size_t capacity;
+    size_t *count;
+} fieldbus_can_process_t;
+
+status_t
+fieldbus_subsystem_process_can(fieldbus_subsystem_t *subsystem,
+                               const fieldbus_can_process_t *parameters);
 status_t fieldbus_subsystem_send_can(fieldbus_subsystem_t *subsystem,
                                      const gateway_measurement_t *measurement);
 

@@ -7,10 +7,7 @@
 
 typedef struct relay relay_t;
 
-typedef enum {
-    RELAY_DEENERGIZED = 0,
-    RELAY_ENERGIZED = 1
-} relay_state_t;
+typedef enum { RELAY_DEENERGIZED = 0, RELAY_ENERGIZED = 1 } relay_state_t;
 
 typedef struct {
     status_t (*init)(void *context, int inactive_level);
@@ -41,11 +38,16 @@ struct relay {
     uint8_t suspended;
 };
 
-status_t relay_construct(relay_t *relay, const relay_ops_t *ops,
-                         void *context, const relay_config_t *config);
+status_t relay_construct(relay_t *relay,
+                         const relay_ops_t *ops,
+                         void *context,
+                         const relay_config_t *config);
 status_t relay_init(relay_t *relay);
 status_t relay_set(relay_t *relay, relay_state_t state);
 status_t relay_force_safe(relay_t *relay);
+/* Owner task only, or hold the same configuration lock as relay_set(). */
+status_t relay_configure_safe_state(relay_t *relay, relay_state_t state);
+status_t relay_get_health(const relay_t *relay, relay_health_t *health);
 status_t relay_get_state(const relay_t *relay, relay_state_t *state);
 status_t relay_suspend(relay_t *relay);
 status_t relay_resume(relay_t *relay);

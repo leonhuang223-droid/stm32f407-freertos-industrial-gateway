@@ -49,7 +49,7 @@ void platform_fault_note_task(const volatile void *task_handle);
 #define configUSE_TRACE_FACILITY 1
 #define configUSE_STATS_FORMATTING_FUNCTIONS 0
 #define configGENERATE_RUN_TIME_STATS 1
-#define portCONFIGURE_TIMER_FOR_RUN_TIME_STATS() \
+#define portCONFIGURE_TIMER_FOR_RUN_TIME_STATS()                               \
     platform_runtime_stats_configure()
 #define portGET_RUN_TIME_COUNTER_VALUE() platform_runtime_stats_counter()
 #define traceTASK_SWITCHED_IN() platform_fault_note_task(pxCurrentTCB)
@@ -67,9 +67,9 @@ void platform_fault_note_task(const volatile void *task_handle);
 #define configPRIO_BITS 4U
 #define configLIBRARY_LOWEST_INTERRUPT_PRIORITY 15U
 #define configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY 5U
-#define configKERNEL_INTERRUPT_PRIORITY \
+#define configKERNEL_INTERRUPT_PRIORITY                                        \
     (configLIBRARY_LOWEST_INTERRUPT_PRIORITY << (8U - configPRIO_BITS))
-#define configMAX_SYSCALL_INTERRUPT_PRIORITY \
+#define configMAX_SYSCALL_INTERRUPT_PRIORITY                                   \
     (configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY << (8U - configPRIO_BITS))
 
 #define vPortSVCHandler SVC_Handler
@@ -77,11 +77,11 @@ void platform_fault_note_task(const volatile void *task_handle);
 #define configPRE_SLEEP_PROCESSING(ticks) platform_f407_pre_sleep(&(ticks))
 #define configPOST_SLEEP_PROCESSING(ticks) platform_f407_post_sleep((ticks))
 
-#define configASSERT(condition)                        \
-    do {                                               \
-        if ((condition) == 0) {                        \
-            platform_assert_panic(__FILE__, __LINE__); \
-        }                                              \
+#define configASSERT(condition)                                                \
+    do {                                                                       \
+        if ((condition) == 0) {                                                \
+            platform_assert_panic(__FILE__, __LINE__);                         \
+        }                                                                      \
     } while (0)
 
 #endif

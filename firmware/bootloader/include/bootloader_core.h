@@ -55,17 +55,25 @@ typedef struct {
  * services.
  */
 typedef struct {
-    status_t (*minimal_init)(void *context); /**< Initialize clock/GPIO/Flash/SPI only. */
-    status_t (*get_reset_reason)(void *context, boot_reset_reason_t *out_reason);
-    status_t (*validate_slot)(void *context, app_slot_t slot); /**< Verify installed image. */
-    status_t (*confirm_slot)(void *context, app_slot_t slot); /**< Commit descriptor confirmed. */
-    status_t (*validate_staging)(void *context, const boot_metadata_t *metadata);
-    status_t (*program_inactive_slot)(void *context, const boot_metadata_t *metadata);
-    status_t (*jump_to_slot)(void *context, app_slot_t slot); /**< Does not return on hardware. */
+    status_t (*minimal_init)(
+        void *context); /**< Initialize clock/GPIO/Flash/SPI only. */
+    status_t (*get_reset_reason)(void *context,
+                                 boot_reset_reason_t *out_reason);
+    status_t (*validate_slot)(void *context,
+                              app_slot_t slot); /**< Verify installed image. */
+    status_t (*confirm_slot)(
+        void *context, app_slot_t slot); /**< Commit descriptor confirmed. */
+    status_t (*validate_staging)(void *context,
+                                 const boot_metadata_t *metadata);
+    status_t (*program_inactive_slot)(void *context,
+                                      const boot_metadata_t *metadata);
+    status_t (*jump_to_slot)(
+        void *context, app_slot_t slot); /**< Does not return on hardware. */
     status_t (*enter_maintenance)(void *context, status_t reason);
-    status_t (*scan_recovery)(void *context, boot_meta_recovery_scan_t *out_scan);
+    status_t (*scan_recovery)(void *context,
+                              boot_meta_recovery_scan_t *out_scan);
     boot_meta_store_t metadata_store; /**< Internal Flash Metadata A/B store. */
-    void *context;                    /**< Opaque platform context passed to callbacks. */
+    void *context; /**< Opaque platform context passed to callbacks. */
 } bootloader_port_t;
 
 /** @brief Bind the Bootloader core to its platform port. */
@@ -74,7 +82,8 @@ status_t bootloader_init(const bootloader_port_t *port);
 /** @brief Run the A/B decision logic without performing the final action. */
 status_t bootloader_select_slot(bootloader_decision_t *out_decision);
 
-/** @brief Program the inactive slot from the already validated staging package. */
+/** @brief Program the inactive slot from the already validated staging package.
+ */
 status_t bootloader_program_inactive_slot(const boot_metadata_t *metadata);
 
 /** @brief Validate one installed slot through the platform port. */
@@ -86,7 +95,8 @@ status_t bootloader_jump_to_slot(app_slot_t slot);
 /** @brief Enter bounded maintenance handling through the platform port. */
 status_t bootloader_enter_maintenance(status_t reason);
 
-/** @brief Execute the full Bootloader flow, including final jump/maintenance action. */
+/** @brief Execute the full Bootloader flow, including final jump/maintenance
+ * action. */
 status_t bootloader_execute(int force_maintenance,
                             bootloader_decision_t *out_decision);
 

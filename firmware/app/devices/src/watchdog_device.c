@@ -22,8 +22,7 @@ status_t watchdog_device_construct(watchdog_device_t *device,
     return SYS_OK;
 }
 
-status_t watchdog_device_start(watchdog_device_t *device,
-                               uint32_t timeout_ms)
+status_t watchdog_device_start(watchdog_device_t *device, uint32_t timeout_ms)
 {
     status_t status;
 

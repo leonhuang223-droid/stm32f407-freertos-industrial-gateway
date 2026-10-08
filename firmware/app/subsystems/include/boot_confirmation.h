@@ -28,8 +28,7 @@ status_t boot_confirmation_construct(boot_confirmation_t *confirmation,
                                      const boot_meta_store_t *store,
                                      app_slot_t running_slot);
 status_t boot_confirmation_confirm(boot_confirmation_t *confirmation);
-status_t boot_confirmation_get_health(
-    const boot_confirmation_t *confirmation,
-    boot_confirmation_health_t *health);
+status_t boot_confirmation_get_health(const boot_confirmation_t *confirmation,
+                                      boot_confirmation_health_t *health);
 
 #endif

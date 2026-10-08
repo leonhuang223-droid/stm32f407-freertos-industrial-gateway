@@ -104,18 +104,20 @@ status_t ui_subsystem_construct(ui_subsystem_t *subsystem,
                                 input_device_t *input,
                                 ui_action_handler_t action_handler,
                                 void *action_context);
-status_t ui_subsystem_configure_draw_buffers(
-    ui_subsystem_t *subsystem, uint16_t *primary, uint16_t *secondary,
-    size_t pixels_per_buffer, uint8_t degraded);
+status_t ui_subsystem_configure_draw_buffers(ui_subsystem_t *subsystem,
+                                             uint16_t *primary,
+                                             uint16_t *secondary,
+                                             size_t pixels_per_buffer,
+                                             uint8_t degraded);
 status_t ui_subsystem_start(ui_subsystem_t *subsystem);
-status_t ui_subsystem_set_action_handler(
-    ui_subsystem_t *subsystem, ui_action_handler_t action_handler,
-    void *action_context);
-status_t ui_subsystem_process(ui_subsystem_t *subsystem, uint32_t now_ms,
+status_t ui_subsystem_set_action_handler(ui_subsystem_t *subsystem,
+                                         ui_action_handler_t action_handler,
+                                         void *action_context);
+status_t ui_subsystem_process(ui_subsystem_t *subsystem,
+                              uint32_t now_ms,
                               const gateway_system_snapshot_t *snapshot,
                               const gateway_runtime_config_t *config);
-status_t ui_subsystem_navigate(ui_subsystem_t *subsystem,
-                               ui_page_id_t page);
+status_t ui_subsystem_navigate(ui_subsystem_t *subsystem, ui_page_id_t page);
 status_t ui_subsystem_get_health(const ui_subsystem_t *subsystem,
                                  ui_health_t *health);
 status_t ui_subsystem_set_power_state(ui_subsystem_t *subsystem,

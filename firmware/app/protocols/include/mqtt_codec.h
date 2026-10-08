@@ -35,19 +35,29 @@ typedef struct {
 } mqtt_packet_view_t;
 
 status_t mqtt_encode_connect(const mqtt_connect_options_t *options,
-                             uint8_t *buffer, size_t capacity,
+                             uint8_t *buffer,
+                             size_t capacity,
                              size_t *length);
+/** Synchronous request; pointed-to buffers remain caller-owned.
+ * @author 兆鸣嵌入式
+ */
+typedef struct {
+    const uint8_t *payload;
+    size_t payload_length;
+    uint16_t packet_id;
+    uint8_t duplicate;
+    uint8_t *buffer;
+    size_t capacity;
+    size_t *length;
+} mqtt_publish_request_t;
+
 status_t mqtt_encode_publish_qos1(const char *topic,
-                                  const uint8_t *payload,
-                                  size_t payload_length,
-                                  uint16_t packet_id, uint8_t duplicate,
-                                  uint8_t *buffer, size_t capacity,
-                                  size_t *length);
-status_t mqtt_encode_pingreq(uint8_t *buffer, size_t capacity,
-                             size_t *length);
-status_t mqtt_encode_disconnect(uint8_t *buffer, size_t capacity,
-                                size_t *length);
-status_t mqtt_decode_packet(const uint8_t *buffer, size_t length,
+                                  const mqtt_publish_request_t *parameters);
+status_t mqtt_encode_pingreq(uint8_t *buffer, size_t capacity, size_t *length);
+status_t
+mqtt_encode_disconnect(uint8_t *buffer, size_t capacity, size_t *length);
+status_t mqtt_decode_packet(const uint8_t *buffer,
+                            size_t length,
                             mqtt_packet_view_t *packet,
                             size_t *consumed);
 

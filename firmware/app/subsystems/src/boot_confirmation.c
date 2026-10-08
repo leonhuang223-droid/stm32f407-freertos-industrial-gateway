@@ -76,9 +76,10 @@ status_t boot_confirmation_confirm(boot_confirmation_t *confirmation)
 
     status = boot_meta_confirm_boot_ok(&current, &desired);
     if (status == SYS_OK) {
-        status = boot_meta_commit(&confirmation->store, &current,
-                                  current_copy, &desired, &committed,
-                                  &committed_copy);
+        status = boot_meta_commit(
+            &confirmation->store,
+            &(const boot_meta_commit_request_t){
+                &current, current_copy, &desired, &committed, &committed_copy});
     }
     (void)committed_copy;
     if (status == SYS_OK) {
@@ -97,9 +98,8 @@ status_t boot_confirmation_confirm(boot_confirmation_t *confirmation)
     return status;
 }
 
-status_t boot_confirmation_get_health(
-    const boot_confirmation_t *confirmation,
-    boot_confirmation_health_t *health)
+status_t boot_confirmation_get_health(const boot_confirmation_t *confirmation,
+                                      boot_confirmation_health_t *health)
 {
     if (confirmation == 0 || confirmation->initialized == 0u || health == 0) {
         return ERR_INVALID_ARG;

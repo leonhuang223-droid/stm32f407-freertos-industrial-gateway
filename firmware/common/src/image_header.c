@@ -10,13 +10,15 @@ static void image_header_crc32_update_byte(crc32_context_t *ctx, uint8_t value)
     (void)crc32_update(ctx, &value, 1u);
 }
 
-static void image_header_crc32_update_u16_le(crc32_context_t *ctx, uint16_t value)
+static void image_header_crc32_update_u16_le(crc32_context_t *ctx,
+                                             uint16_t value)
 {
     image_header_crc32_update_byte(ctx, (uint8_t)(value & 0xFFu));
     image_header_crc32_update_byte(ctx, (uint8_t)((value >> 8) & 0xFFu));
 }
 
-static void image_header_crc32_update_u32_le(crc32_context_t *ctx, uint32_t value)
+static void image_header_crc32_update_u32_le(crc32_context_t *ctx,
+                                             uint32_t value)
 {
     image_header_crc32_update_byte(ctx, (uint8_t)(value & 0xFFu));
     image_header_crc32_update_byte(ctx, (uint8_t)((value >> 8) & 0xFFu));
@@ -53,7 +55,8 @@ static uint32_t image_header_crc32(const image_header_t *header)
         image_header_crc32_update_byte(&ctx, header->image_sha256[i]);
     }
     for (i = 0u; i < sizeof(header->min_bootloader_version); ++i) {
-        image_header_crc32_update_byte(&ctx, (uint8_t)header->min_bootloader_version[i]);
+        image_header_crc32_update_byte(
+            &ctx, (uint8_t)header->min_bootloader_version[i]);
     }
     image_header_crc32_update_u32_le(&ctx, header->image_flags);
     image_header_crc32_update_u32_le(&ctx, 0u);
@@ -62,7 +65,8 @@ static uint32_t image_header_crc32(const image_header_t *header)
     return crc;
 }
 
-static int fixed_string_nonempty_and_terminated(const char *text, size_t capacity)
+static int fixed_string_nonempty_and_terminated(const char *text,
+                                                size_t capacity)
 {
     size_t i;
 
@@ -89,7 +93,9 @@ static int sha256_nonzero(const uint8_t sha[IMAGE_SHA256_LEN])
     return 0;
 }
 
-status_t image_header_parse(const uint8_t *buffer, size_t length, image_header_t *out_header)
+status_t image_header_parse(const uint8_t *buffer,
+                            size_t length,
+                            image_header_t *out_header)
 {
     if (buffer == 0 || out_header == 0 || length < sizeof(image_header_t)) {
         return ERR_INVALID_ARG;
@@ -114,17 +120,19 @@ status_t image_header_validate_basic(const image_header_t *header)
     if (header == 0) {
         return ERR_INVALID_ARG;
     }
-    if (header->magic != IMAGE_MAGIC ||
-        header->header_version != 1u ||
+    if (header->magic != IMAGE_MAGIC || header->header_version != 1u ||
         header->header_size != sizeof(image_header_t) ||
-        !fixed_string_nonempty_and_terminated(header->target_id, sizeof(header->target_id)) ||
-        !fixed_string_nonempty_and_terminated(header->app_version, sizeof(header->app_version)) ||
-        !fixed_string_nonempty_and_terminated(header->git_sha, sizeof(header->git_sha)) ||
-        !fixed_string_nonempty_and_terminated(header->min_bootloader_version,
-                                              sizeof(header->min_bootloader_version)) ||
+        !fixed_string_nonempty_and_terminated(header->target_id,
+                                              sizeof(header->target_id)) ||
+        !fixed_string_nonempty_and_terminated(header->app_version,
+                                              sizeof(header->app_version)) ||
+        !fixed_string_nonempty_and_terminated(header->git_sha,
+                                              sizeof(header->git_sha)) ||
+        !fixed_string_nonempty_and_terminated(
+            header->min_bootloader_version,
+            sizeof(header->min_bootloader_version)) ||
         strcmp(header->target_id, PROJECT_TARGET_ID) != 0 ||
-        header->image_size == 0u ||
-        !sha256_nonzero(header->image_sha256)) {
+        header->image_size == 0u || !sha256_nonzero(header->image_sha256)) {
         return ERR_IMAGE_INVALID;
     }
     if (image_header_crc32(header) != header->header_crc32) {
@@ -134,7 +142,8 @@ status_t image_header_validate_basic(const image_header_t *header)
     return SYS_OK;
 }
 
-status_t image_header_validate_for_slot(const image_header_t *header, app_slot_t expected_slot)
+status_t image_header_validate_for_slot(const image_header_t *header,
+                                        app_slot_t expected_slot)
 {
     const partition_t *image_partition;
     status_t status;
@@ -154,7 +163,8 @@ status_t image_header_validate_for_slot(const image_header_t *header, app_slot_t
     }
 
     image_partition = partition_get_slot_image(expected_slot);
-    if (image_partition == 0 || header->link_address != image_partition->start) {
+    if (image_partition == 0 ||
+        header->link_address != image_partition->start) {
         return ERR_SLOT_MISMATCH;
     }
     if (header->image_offset != (uint32_t)sizeof(image_header_t) ||
@@ -166,7 +176,8 @@ status_t image_header_validate_for_slot(const image_header_t *header, app_slot_t
     return SYS_OK;
 }
 
-status_t image_header_validate_package_layout(const image_header_t *header, size_t package_size)
+status_t image_header_validate_package_layout(const image_header_t *header,
+                                              size_t package_size)
 {
     uint32_t package_end_u32;
     uintmax_t package_end_wide;
@@ -179,8 +190,8 @@ status_t image_header_validate_package_layout(const image_header_t *header, size
         header->image_offset > UINT32_MAX - header->image_size) {
         return ERR_IMAGE_INVALID;
     }
-    package_end_wide = (uintmax_t)header->image_offset +
-                       (uintmax_t)header->image_size;
+    package_end_wide =
+        (uintmax_t)header->image_offset + (uintmax_t)header->image_size;
     if (package_end_wide > (uintmax_t)SIZE_MAX) {
         return ERR_IMAGE_INVALID;
     }

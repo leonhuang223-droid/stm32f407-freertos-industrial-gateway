@@ -34,11 +34,9 @@ int main(void)
     }
     application.acquisition_startup_status =
         f407_acquisition_configure(&application);
-    application.fieldbus_startup_status =
-        f407_fieldbus_configure(&application);
+    application.fieldbus_startup_status = f407_fieldbus_configure(&application);
     (void)f407_control_storage_configure(&application);
-    application.network_startup_status =
-        f407_network_configure(&application);
+    application.network_startup_status = f407_network_configure(&application);
     application.ui_startup_status = f407_display_configure(&application);
     application.cli_startup_status = f407_cli_configure(&application);
     if (f407_reliability_configure(&application) != SYS_OK) {
@@ -52,9 +50,8 @@ int main(void)
           APP_INITIALIZED_RELIABILITY)) !=
         (APP_INITIALIZED_ACQUISITION | APP_INITIALIZED_FIELDBUS |
          APP_INITIALIZED_STORAGE | APP_INITIALIZED_CONTROL |
-         APP_INITIALIZED_NETWORK | APP_INITIALIZED_CONFIG |
-         APP_INITIALIZED_UI | APP_INITIALIZED_CLI |
-         APP_INITIALIZED_RELIABILITY)) {
+         APP_INITIALIZED_NETWORK | APP_INITIALIZED_CONFIG | APP_INITIALIZED_UI |
+         APP_INITIALIZED_CLI | APP_INITIALIZED_RELIABILITY)) {
         platform_f407_panic();
     }
     if (app_rtos_start(&application) != SYS_OK) {

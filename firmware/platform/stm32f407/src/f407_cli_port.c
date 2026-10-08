@@ -54,23 +54,26 @@ static status_t cli_init(void *opaque)
     return start_receive(context);
 }
 
-static size_t drain_ring(f407_cli_context_t *context, uint8_t *data,
-                         size_t capacity)
+static size_t
+drain_ring(f407_cli_context_t *context, uint8_t *data, size_t capacity)
 {
     size_t length = 0u;
 
     taskENTER_CRITICAL();
     while (length < capacity && context->tail != context->head) {
         data[length++] = context->ring[context->tail];
-        context->tail = (uint16_t)((context->tail + 1u) %
-                                   F407_CLI_RING_CAPACITY);
+        context->tail =
+            (uint16_t)((context->tail + 1u) % F407_CLI_RING_CAPACITY);
     }
     taskEXIT_CRITICAL();
     return length;
 }
 
-static status_t cli_read(void *opaque, uint8_t *data, size_t capacity,
-                         size_t *length, uint32_t timeout_ms)
+static status_t cli_read(void *opaque,
+                         uint8_t *data,
+                         size_t capacity,
+                         size_t *length,
+                         uint32_t timeout_ms)
 {
     f407_cli_context_t *context = opaque;
     uint32_t events = 0u;
@@ -88,8 +91,10 @@ static status_t cli_read(void *opaque, uint8_t *data, size_t capacity,
     if (*length != 0u) {
         return SYS_OK;
     }
-    if (xTaskNotifyWait(0u, F407_CLI_NOTIFY_RX | F407_CLI_NOTIFY_ERROR,
-                        &events, pdMS_TO_TICKS(timeout_ms)) != pdPASS) {
+    if (xTaskNotifyWait(0u,
+                        F407_CLI_NOTIFY_RX | F407_CLI_NOTIFY_ERROR,
+                        &events,
+                        pdMS_TO_TICKS(timeout_ms)) != pdPASS) {
         return ERR_TIMEOUT;
     }
     if ((events & F407_CLI_NOTIFY_ERROR) != 0u) {
@@ -99,8 +104,8 @@ static status_t cli_read(void *opaque, uint8_t *data, size_t capacity,
     return *length != 0u ? SYS_OK : ERR_TIMEOUT;
 }
 
-static status_t cli_write(void *opaque, const uint8_t *data, size_t length,
-                          uint32_t timeout_ms)
+static status_t
+cli_write(void *opaque, const uint8_t *data, size_t length, uint32_t timeout_ms)
 {
     f407_cli_context_t *context = opaque;
     TickType_t start;
@@ -120,9 +125,10 @@ static status_t cli_write(void *opaque, const uint8_t *data, size_t length,
         TickType_t elapsed = xTaskGetTickCount() - start;
         TickType_t remaining = elapsed < timeout ? timeout - elapsed : 0u;
 
-        if (xTaskNotifyWait(0u, F407_CLI_NOTIFY_TX |
-                           F407_CLI_NOTIFY_ERROR, &events, remaining) !=
-            pdPASS) {
+        if (xTaskNotifyWait(0u,
+                            F407_CLI_NOTIFY_TX | F407_CLI_NOTIFY_ERROR,
+                            &events,
+                            remaining) != pdPASS) {
             (void)HAL_UART_AbortTransmit(context->uart);
             return ERR_TIMEOUT;
         }
@@ -139,8 +145,8 @@ static status_t cli_suspend(void *opaque)
 {
     f407_cli_context_t *context = opaque;
 
-    return context != 0 && HAL_UART_DMAStop(context->uart) == HAL_OK
-        ? SYS_OK : ERR_IO;
+    return context != 0 && HAL_UART_DMAStop(context->uart) == HAL_OK ? SYS_OK
+                                                                     : ERR_IO;
 }
 
 static status_t cli_resume(void *opaque)
@@ -149,12 +155,7 @@ static status_t cli_resume(void *opaque)
 }
 
 static const cli_transport_ops_t cli_ops = {
-    cli_init,
-    cli_read,
-    cli_write,
-    cli_suspend,
-    cli_resume
-};
+    cli_init, cli_read, cli_write, cli_suspend, cli_resume};
 
 status_t f407_cli_configure(app_context_t *context)
 {
@@ -179,8 +180,7 @@ static void notify_owner(f407_cli_context_t *context, uint32_t bits)
 
 static void push_byte(f407_cli_context_t *context, uint8_t byte)
 {
-    uint16_t next = (uint16_t)((context->head + 1u) %
-                               F407_CLI_RING_CAPACITY);
+    uint16_t next = (uint16_t)((context->head + 1u) % F407_CLI_RING_CAPACITY);
 
     if (next == context->tail) {
         context->overflows++;
@@ -219,8 +219,7 @@ void f407_cli_uart_rx_event(UART_HandleTypeDef *handle, uint16_t size)
             push_byte(&cli_context, cli_context.dma_rx[position++]);
         }
     }
-    cli_context.dma_position = size == sizeof(cli_context.dma_rx)
-        ? 0u : size;
+    cli_context.dma_position = size == sizeof(cli_context.dma_rx) ? 0u : size;
     notify_owner(&cli_context, F407_CLI_NOTIFY_RX);
 }
 

@@ -60,7 +60,7 @@ static status_t hal_flash_lock(void *context)
 
 static status_t hal_flash_erase_sector(void *context, uint8_t sector_index)
 {
-    FLASH_EraseInitTypeDef erase = { 0 };
+    FLASH_EraseInitTypeDef erase = {0};
     uint32_t sector_error = UINT32_MAX;
 
     (void)context;
@@ -73,23 +73,23 @@ static status_t hal_flash_erase_sector(void *context, uint8_t sector_index)
     erase.NbSectors = 1u;
     erase.VoltageRange = FLASH_VOLTAGE_RANGE_3;
     return HAL_FLASHEx_Erase(&erase, &sector_error) == HAL_OK &&
-           sector_error == UINT32_MAX
-        ? SYS_OK
-        : ERR_FLASH_ERASE;
+                   sector_error == UINT32_MAX
+               ? SYS_OK
+               : ERR_FLASH_ERASE;
 }
 
-static status_t hal_flash_program_word(void *context, uint32_t address,
-                                       uint32_t value)
+static status_t
+hal_flash_program_word(void *context, uint32_t address, uint32_t value)
 {
     (void)context;
     return HAL_FLASH_Program(
                FLASH_TYPEPROGRAM_WORD, address, (uint64_t)value) == HAL_OK
-        ? SYS_OK
-        : ERR_FLASH_WRITE;
+               ? SYS_OK
+               : ERR_FLASH_WRITE;
 }
 
-static status_t hal_flash_read(void *context, uint32_t address,
-                               uint8_t *buffer, size_t length)
+static status_t
+hal_flash_read(void *context, uint32_t address, uint8_t *buffer, size_t length)
 {
     (void)context;
     if (buffer == 0 || length == 0u || address < INTERNAL_FLASH_BASE ||
@@ -104,22 +104,23 @@ static status_t hal_flash_read(void *context, uint32_t address,
 static status_t w25_select(void *context, int active)
 {
     (void)context;
-    HAL_GPIO_WritePin(W25Q128_CS_GPIO_Port, W25Q128_CS_Pin,
+    HAL_GPIO_WritePin(W25Q128_CS_GPIO_Port,
+                      W25Q128_CS_Pin,
                       active != 0 ? GPIO_PIN_RESET : GPIO_PIN_SET);
     return SYS_OK;
 }
 
-static status_t w25_transmit(void *context, const uint8_t *data,
-                             size_t length)
+static status_t w25_transmit(void *context, const uint8_t *data, size_t length)
 {
     (void)context;
     if (data == 0 || length == 0u || length > UINT16_MAX) {
         return ERR_INVALID_ARG;
     }
-    return map_hal_status(
-        HAL_SPI_Transmit(&hspi1, (uint8_t *)(uintptr_t)data,
-                         (uint16_t)length, BOOT_IO_TIMEOUT_MS),
-        ERR_FLASH_WRITE);
+    return map_hal_status(HAL_SPI_Transmit(&hspi1,
+                                           (uint8_t *)(uintptr_t)data,
+                                           (uint16_t)length,
+                                           BOOT_IO_TIMEOUT_MS),
+                          ERR_FLASH_WRITE);
 }
 
 static status_t w25_receive(void *context, uint8_t *data, size_t length)
@@ -139,8 +140,8 @@ static void w25_delay(void *context, uint32_t delay_ms)
     HAL_Delay(delay_ms);
 }
 
-static status_t staging_read(void *context, uint32_t address,
-                             uint8_t *buffer, size_t length)
+static status_t
+staging_read(void *context, uint32_t address, uint8_t *buffer, size_t length)
 {
     f407_boot_context_t *platform = context;
 
@@ -218,15 +219,14 @@ static status_t minimal_init(void *context)
     w25_port.context = platform;
     w25_config.expected_jedec_id = W25Q128_JEDEC_ID;
     w25_config.total_size = W25Q128_TOTAL_SIZE;
-    platform->w25_status = w25q_boot_init(
-        &platform->w25q128, &w25_config, &w25_port);
+    platform->w25_status =
+        w25q_boot_init(&platform->w25q128, &w25_config, &w25_port);
 
     /* A staging-device fault must not prevent booting a valid internal App. */
     return SYS_OK;
 }
 
-static status_t get_reset_reason(void *context,
-                                 boot_reset_reason_t *out_reason)
+static status_t get_reset_reason(void *context, boot_reset_reason_t *out_reason)
 {
     f407_boot_context_t *platform = context;
 
@@ -238,7 +238,8 @@ static status_t get_reset_reason(void *context,
     return SYS_OK;
 }
 
-static status_t metadata_read(void *context, app_slot_t copy_slot,
+static status_t metadata_read(void *context,
+                              app_slot_t copy_slot,
                               boot_metadata_t *out_metadata)
 {
     f407_boot_context_t *platform = context;
@@ -247,11 +248,14 @@ static status_t metadata_read(void *context, app_slot_t copy_slot,
     if (platform == 0 || partition == 0 || out_metadata == 0) {
         return ERR_INVALID_ARG;
     }
-    return f407_flash_read(&platform->flash, partition->start,
-                           (uint8_t *)out_metadata, sizeof(*out_metadata));
+    return f407_flash_read(&platform->flash,
+                           partition->start,
+                           (uint8_t *)out_metadata,
+                           sizeof(*out_metadata));
 }
 
-static status_t metadata_write(void *context, app_slot_t copy_slot,
+static status_t metadata_write(void *context,
+                               app_slot_t copy_slot,
                                const boot_metadata_t *metadata)
 {
     f407_boot_context_t *platform = context;
@@ -272,9 +276,10 @@ static status_t metadata_write(void *context, app_slot_t copy_slot,
     }
     status = f407_flash_erase_metadata(&platform->flash, copy_slot);
     if (status == SYS_OK) {
-        status = f407_flash_program_metadata(
-            &platform->flash, copy_slot,
-            (const uint8_t *)metadata, sizeof(*metadata));
+        status = f407_flash_program_metadata(&platform->flash,
+                                             copy_slot,
+                                             (const uint8_t *)metadata,
+                                             sizeof(*metadata));
     }
     if (status == SYS_OK) {
         status = metadata_read(platform, copy_slot, &readback);
@@ -290,8 +295,8 @@ static status_t metadata_write(void *context, app_slot_t copy_slot,
     return status == SYS_OK ? lock_status : status;
 }
 
-static status_t read_relative(void *context, uint32_t offset,
-                              uint8_t *buffer, size_t length)
+static status_t
+read_relative(void *context, uint32_t offset, uint8_t *buffer, size_t length)
 {
     f407_address_reader_t *reader = context;
 
@@ -316,9 +321,14 @@ static status_t verify_installed_slot(f407_boot_context_t *platform,
     image_reader.base_address = image->start;
     descriptor_reader.base_address = descriptor->start;
     return image_descriptor_verify_installed(
-        slot, read_relative, &descriptor_reader,
-        read_relative, &image_reader,
-        platform->scratch, sizeof(platform->scratch), out_header);
+        slot,
+        &(const image_descriptor_check_t){read_relative,
+                                          &descriptor_reader,
+                                          read_relative,
+                                          &image_reader,
+                                          platform->scratch,
+                                          sizeof(platform->scratch),
+                                          out_header});
 }
 
 static status_t validate_slot(void *context, app_slot_t slot)
@@ -326,18 +336,19 @@ static status_t validate_slot(void *context, app_slot_t slot)
     return verify_installed_slot(context, slot, 0);
 }
 
-static status_t descriptor_store_read(void *context, uint32_t address,
-                                      uint8_t *buffer, size_t length)
+static status_t descriptor_store_read(void *context,
+                                      uint32_t address,
+                                      uint8_t *buffer,
+                                      size_t length)
 {
     f407_boot_context_t *platform = context;
 
     return platform != 0
-        ? f407_flash_read(&platform->flash, address, buffer, length)
-        : ERR_INVALID_ARG;
+               ? f407_flash_read(&platform->flash, address, buffer, length)
+               : ERR_INVALID_ARG;
 }
 
-static status_t descriptor_erase(void *context, uint32_t address,
-                                 size_t length)
+static status_t descriptor_erase(void *context, uint32_t address, size_t length)
 {
     f407_boot_context_t *platform = context;
     const partition_t *descriptor;
@@ -350,12 +361,14 @@ static status_t descriptor_erase(void *context, uint32_t address,
         length != descriptor->size) {
         return ERR_FLASH_ERASE;
     }
-    return f407_flash_erase_descriptor(
-        &platform->flash, platform->descriptor_slot);
+    return f407_flash_erase_descriptor(&platform->flash,
+                                       platform->descriptor_slot);
 }
 
-static status_t descriptor_write(void *context, uint32_t address,
-                                 const uint8_t *data, size_t length)
+static status_t descriptor_write(void *context,
+                                 uint32_t address,
+                                 const uint8_t *data,
+                                 size_t length)
 {
     f407_boot_context_t *platform = context;
     const partition_t *descriptor;
@@ -408,18 +421,24 @@ static status_t confirm_slot(void *context, app_slot_t slot)
     return status == SYS_OK ? lock_status : status;
 }
 
-static status_t validate_staging(void *context,
-                                 const boot_metadata_t *metadata)
+static status_t validate_staging(void *context, const boot_metadata_t *metadata)
 {
     f407_boot_context_t *platform = context;
 
     return boot_staging_package_validate(
-        staging_read, platform, metadata,
-        platform->scratch, sizeof(platform->scratch), 0, 0);
+        staging_read,
+        &(const boot_package_validation_t){platform,
+                                           metadata,
+                                           platform->scratch,
+                                           sizeof(platform->scratch),
+                                           0,
+                                           0});
 }
 
-static status_t install_package_read(void *context, uint32_t offset,
-                                     uint8_t *buffer, size_t length)
+static status_t install_package_read(void *context,
+                                     uint32_t offset,
+                                     uint8_t *buffer,
+                                     size_t length)
 {
     f407_boot_context_t *platform = context;
 
@@ -432,8 +451,8 @@ static status_t install_package_read(void *context, uint32_t offset,
         &platform->w25q128, BOOT_STAGING_START + offset, buffer, length);
 }
 
-static status_t install_flash_erase(void *context, uint32_t address,
-                                    size_t length)
+static status_t
+install_flash_erase(void *context, uint32_t address, size_t length)
 {
     f407_boot_context_t *platform = context;
 
@@ -441,18 +460,21 @@ static status_t install_flash_erase(void *context, uint32_t address,
         &platform->flash, address, length, platform->install_active_slot);
 }
 
-static status_t install_flash_write(void *context, uint32_t address,
-                                    const uint8_t *data, size_t length)
+static status_t install_flash_write(void *context,
+                                    uint32_t address,
+                                    const uint8_t *data,
+                                    size_t length)
 {
     f407_boot_context_t *platform = context;
 
     return f407_flash_program_inactive(
-        &platform->flash, address, data, length,
-        platform->install_active_slot);
+        &platform->flash, address, data, length, platform->install_active_slot);
 }
 
-static status_t install_flash_read(void *context, uint32_t address,
-                                   uint8_t *buffer, size_t length)
+static status_t install_flash_read(void *context,
+                                   uint32_t address,
+                                   uint8_t *buffer,
+                                   size_t length)
 {
     f407_boot_context_t *platform = context;
 
@@ -469,8 +491,13 @@ static status_t program_inactive_slot(void *context,
     status_t lock_status;
 
     status = boot_staging_package_validate(
-        staging_read, platform, metadata,
-        platform->scratch, sizeof(platform->scratch), &package, 0);
+        staging_read,
+        &(const boot_package_validation_t){platform,
+                                           metadata,
+                                           platform->scratch,
+                                           sizeof(platform->scratch),
+                                           &package,
+                                           0});
     if (status != SYS_OK) {
         return status;
     }
@@ -489,9 +516,13 @@ static status_t program_inactive_slot(void *context,
         return status;
     }
     status = image_install_package(
-        &install_port, metadata->active_slot, metadata->pending_slot,
-        package.package_size, platform->scratch, sizeof(platform->scratch),
-        0);
+        &install_port,
+        &(const image_install_request_t){metadata->active_slot,
+                                         metadata->pending_slot,
+                                         package.package_size,
+                                         platform->scratch,
+                                         sizeof(platform->scratch),
+                                         0});
     lock_status = f407_flash_lock(&platform->flash);
     return status == SYS_OK ? lock_status : status;
 }
@@ -509,13 +540,15 @@ static status_t scan_recovery(void *context,
     memset(&store, 0, sizeof(store));
     store.read = descriptor_store_read;
     store.context = platform;
-    return image_descriptor_scan_recovery(
-        &store, platform->scratch, sizeof(platform->scratch),
-        out_scan, &scan_status);
+    return image_descriptor_scan_recovery(&store,
+                                          platform->scratch,
+                                          sizeof(platform->scratch),
+                                          out_scan,
+                                          &scan_status);
 }
 
-static status_t jump_read(void *context, uint32_t address,
-                          uint8_t *buffer, size_t length)
+static status_t
+jump_read(void *context, uint32_t address, uint8_t *buffer, size_t length)
 {
     f407_boot_context_t *platform = context;
 
@@ -569,22 +602,20 @@ static void jump_set_vtor(void *context, uint32_t address)
     __ISB();
 }
 
-__attribute__((noreturn))
-static void jump_set_msp_and_branch(void *context, uint32_t msp,
-                                    uint32_t reset_handler)
+__attribute__((noreturn)) static void
+jump_set_msp_and_branch(void *context, uint32_t msp, uint32_t reset_handler)
 {
     (void)context;
     __set_BASEPRI(0u);
     __set_FAULTMASK(0u);
     __set_CONTROL(0u);
-    __asm volatile(
-        "msr msp, %0\n"
-        "dsb\n"
-        "isb\n"
-        "bx %1\n"
-        :
-        : "r"(msp), "r"(reset_handler)
-        : "memory");
+    __asm volatile("msr msp, %0\n"
+                   "dsb\n"
+                   "isb\n"
+                   "bx %1\n"
+                   :
+                   : "r"(msp), "r"(reset_handler)
+                   : "memory");
     __builtin_unreachable();
 }
 
@@ -607,9 +638,10 @@ static status_t jump_to_slot(void *context, app_slot_t slot)
 static void diagnostic_write(const char *message, size_t length)
 {
     if (message != 0 && length != 0u && length <= UINT16_MAX) {
-        (void)HAL_UART_Transmit(
-            &huart1, (uint8_t *)(uintptr_t)message,
-            (uint16_t)length, BOOT_IO_TIMEOUT_MS);
+        (void)HAL_UART_Transmit(&huart1,
+                                (uint8_t *)(uintptr_t)message,
+                                (uint16_t)length,
+                                BOOT_IO_TIMEOUT_MS);
     }
 }
 
@@ -628,8 +660,7 @@ static void diagnostic_status(status_t reason)
     diagnostic_write(suffix, sizeof(suffix) - 1u);
 }
 
-__attribute__((noreturn))
-static void maintenance_loop(status_t reason)
+__attribute__((noreturn)) static void maintenance_loop(status_t reason)
 {
     uint32_t last_toggle = HAL_GetTick();
     GPIO_PinState state = GPIO_PIN_RESET;
@@ -706,8 +737,7 @@ int f407_boot_main(void)
     if (status != SYS_OK) {
         f407_boot_platform_fatal(status);
     }
-    status = bootloader_execute(
-        f407_boot_platform_key_pressed(), &decision);
+    status = bootloader_execute(f407_boot_platform_key_pressed(), &decision);
     f407_boot_platform_fatal(status);
     return 1;
 }

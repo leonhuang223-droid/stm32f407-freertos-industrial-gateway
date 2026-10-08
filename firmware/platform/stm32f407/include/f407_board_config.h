@@ -58,7 +58,8 @@
 #define F407_MQTT_PUBLISH_RETRY_LIMIT 3u
 #define F407_ESP8266_MODEM_SLEEP_ENABLED 1u
 
-/* Deep modes stay disabled until RTC/EXTI wake and clock recovery are proven. */
+/* Deep modes stay disabled until RTC/EXTI wake and clock recovery are proven.
+ */
 #define F407_STOP_PERIODIC_ENABLED 0u
 #define F407_STANDBY_SHIPPING_ENABLED 0u
 #define F407_STOP_MINIMUM_MS 1000u

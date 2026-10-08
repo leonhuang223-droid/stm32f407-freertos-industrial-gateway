@@ -2,16 +2,17 @@
 
 #include <string.h>
 
-status_t lcd_controller_detect(lcd_controller_t *controller, lcd_bus_t *bus,
-                               uint16_t width, uint16_t height)
+status_t lcd_controller_detect(lcd_controller_t *controller,
+                               lcd_bus_t *bus,
+                               uint16_t width,
+                               uint16_t height)
 {
-    const lcd_controller_ops_t *candidates[] = {
-        lcd_ili9806g_ops(), lcd_nt35510_ops()
-    };
+    const lcd_controller_ops_t *candidates[] = {lcd_ili9806g_ops(),
+                                                lcd_nt35510_ops()};
     size_t i;
 
-    if (controller == 0 || bus == 0 || bus->initialized == 0u ||
-        width == 0u || height == 0u) {
+    if (controller == 0 || bus == 0 || bus->initialized == 0u || width == 0u ||
+        height == 0u) {
         return ERR_INVALID_ARG;
     }
     memset(controller, 0, sizeof(*controller));
@@ -38,8 +39,7 @@ status_t lcd_controller_init(lcd_controller_t *controller)
 {
     status_t status;
 
-    if (controller == 0 || controller->ops == 0 ||
-        controller->ops->init == 0) {
+    if (controller == 0 || controller->ops == 0 || controller->ops->init == 0) {
         return ERR_DEVICE_NOT_READY;
     }
     status = controller->ops->init(controller);
@@ -51,10 +51,18 @@ status_t lcd_controller_init(lcd_controller_t *controller)
 }
 
 status_t lcd_controller_flush(lcd_controller_t *controller,
-                              uint16_t x1, uint16_t y1,
-                              uint16_t x2, uint16_t y2,
-                              const uint16_t *pixels, size_t pixel_count)
+                              const lcd_flush_request_t *parameters)
 {
+    if (parameters == 0) {
+        return ERR_INVALID_ARG;
+    }
+    uint16_t x1 = parameters->x1;
+    uint16_t y1 = parameters->y1;
+    uint16_t x2 = parameters->x2;
+    uint16_t y2 = parameters->y2;
+    const uint16_t *pixels = parameters->pixels;
+    size_t pixel_count = parameters->pixel_count;
+
     size_t expected;
     status_t status;
 
@@ -112,6 +120,6 @@ status_t lcd_controller_resume(lcd_controller_t *controller)
 
 const char *lcd_controller_name(const lcd_controller_t *controller)
 {
-    return controller != 0 && controller->ops != 0
-        ? controller->ops->name : "unidentified";
+    return controller != 0 && controller->ops != 0 ? controller->ops->name
+                                                   : "unidentified";
 }

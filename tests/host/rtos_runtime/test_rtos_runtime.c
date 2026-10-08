@@ -16,6 +16,30 @@ static status_t relay_write_mock(void *opaque, int active)
 { *(int *)opaque = active; return SYS_OK; }
 static status_t wake_failure(void *opaque)
 { (void)opaque; wake_calls++; return ERR_IO; }
+static status_t media_read_failure(void *opaque, uint32_t address,
+                                   uint8_t *data, size_t length)
+{
+    (void)opaque;
+    (void)address;
+    (void)data;
+    (void)length;
+    return ERR_IO;
+}
+static status_t media_program_failure(void *opaque, uint32_t address,
+                                      const uint8_t *data, size_t length)
+{
+    (void)opaque;
+    (void)address;
+    (void)data;
+    (void)length;
+    return ERR_IO;
+}
+static status_t media_erase_failure(void *opaque, uint32_t address)
+{
+    (void)opaque;
+    (void)address;
+    return ERR_IO;
+}
 
 static void setup(void)
 {
@@ -67,13 +91,21 @@ static void test_storage_failure_consumes_selected_members(unsigned int mode)
     gateway_storage_log_request_t log = { 0 };
     gateway_storage_alarm_request_t alarm = { 0 };
     config_patch_t patch = { GATEWAY_POINT_LOOP_CURRENT, CONFIG_FIELD_HIGH_THRESHOLD, 22000 };
-    static const storage_media_ops_t media_ops = { .wake = wake_failure };
+    static const storage_media_ops_t media_ops = {
+        .read = media_read_failure,
+        .program = media_program_failure,
+        .erase_sector = media_erase_failure,
+        .wake = wake_failure
+    };
     setup();
     if (mode != 0u) {
         app.storage.health.mounted = 1u;
         app.storage.health.powered_down = mode == 1u ? 1u : 0u;
         app.storage.media = &app.storage_media;
-        app.storage_media.ops = &media_ops;
+        assert(storage_media_construct(&app.storage_media,
+    &media_ops,
+    &app,
+    &(const storage_media_geometry_t){ 4096u, 256u, 4096u }) == SYS_OK);
         if (mode == 2u) {
             app.power.lock_refcount[PM_LOCK_FLASH_WRITE] = UINT16_MAX;
         }

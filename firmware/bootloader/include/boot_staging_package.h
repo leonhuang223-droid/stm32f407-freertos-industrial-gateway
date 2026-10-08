@@ -31,12 +31,14 @@ extern "C" {
 #define BOOT_STAGING_METADATA_CRC_OFFSET OTA_STAGING_METADATA_CRC_OFFSET
 
 /** Reader for W25Q128 staging bytes. */
-typedef status_t (*boot_staging_read_fn)(
-    void *context, uint32_t address, uint8_t *buffer, size_t length);
+typedef status_t (*boot_staging_read_fn)(void *context,
+                                         uint32_t address,
+                                         uint8_t *buffer,
+                                         size_t length);
 
 /** Validated staging package metadata used for install. */
 typedef struct {
-    uint32_t package_size; /**< Total staged package bytes. */
+    uint32_t package_size;  /**< Total staged package bytes. */
     app_slot_t target_slot; /**< Slot encoded by package header. */
     uint32_t package_crc32; /**< CRC32 over the package bytes. */
     uint8_t package_sha256[IMAGE_SHA256_LEN]; /**< SHA256 over package bytes. */
@@ -50,37 +52,39 @@ typedef struct {
  * @param out_package Destination package metadata.
  * @return SYS_OK when metadata magic, size, and CRC are valid.
  */
-status_t boot_staging_package_load(
-    boot_staging_read_fn read_fn,
-    void *read_context,
-    const boot_metadata_t *metadata,
-    boot_staging_package_t *out_package);
+status_t boot_staging_package_load(boot_staging_read_fn read_fn,
+                                   void *read_context,
+                                   const boot_metadata_t *metadata,
+                                   boot_staging_package_t *out_package);
 /**
  * @brief Check an image header against the compiled bootloader version.
  * @param header Staged package header.
  * @return SYS_OK when this bootloader is new enough to install it.
  */
-status_t boot_staging_validate_min_bootloader_version(
-    const image_header_t *header);
+status_t
+boot_staging_validate_min_bootloader_version(const image_header_t *header);
+/** Synchronous request; pointed-to buffers remain caller-owned.
+ * @author 兆鸣嵌入式
+ */
+typedef struct {
+    void *read_context;
+    const boot_metadata_t *metadata;
+    uint8_t *scratch;
+    size_t scratch_size;
+    boot_staging_package_t *out_package;
+    image_header_t *out_header;
+} boot_package_validation_t;
+
 /**
  * @brief Validate staged package metadata, header, CRC, SHA, and vector table.
  * @param read_fn Staging reader callback.
- * @param read_context Reader context.
- * @param metadata Boot metadata with pending slot/package fields.
- * @param scratch Temporary streaming buffer.
- * @param scratch_size Size of scratch in bytes.
- * @param out_package Optional validated package metadata output.
- * @param out_header Optional validated image header output.
+ * @param parameters Reader context, pending metadata, scratch and outputs.
+ * All pointed-to data remains valid until this synchronous call returns.
  * @return SYS_OK when the staged package can be installed.
  */
-status_t boot_staging_package_validate(
-    boot_staging_read_fn read_fn,
-    void *read_context,
-    const boot_metadata_t *metadata,
-    uint8_t *scratch,
-    size_t scratch_size,
-    boot_staging_package_t *out_package,
-    image_header_t *out_header);
+status_t
+boot_staging_package_validate(boot_staging_read_fn read_fn,
+                              const boot_package_validation_t *parameters);
 
 #ifdef __cplusplus
 }

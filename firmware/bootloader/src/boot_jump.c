@@ -2,18 +2,15 @@
 
 static int port_complete(const boot_jump_port_t *port)
 {
-    return port != 0 &&
-           port->read != 0 &&
-           port->disable_interrupts != 0 &&
-           port->clear_nvic != 0 &&
-           port->stop_tick != 0 &&
-           port->deinit_peripherals != 0 &&
-           port->set_vtor != 0 &&
+    return port != 0 && port->read != 0 && port->disable_interrupts != 0 &&
+           port->clear_nvic != 0 && port->stop_tick != 0 &&
+           port->deinit_peripherals != 0 && port->set_vtor != 0 &&
            port->set_msp_and_branch != 0;
 }
 
-status_t boot_jump_validate_vectors(
-    app_slot_t slot, uint32_t msp, uint32_t reset_handler)
+status_t boot_jump_validate_vectors(app_slot_t slot,
+                                    uint32_t msp,
+                                    uint32_t reset_handler)
 {
     const partition_t *image = partition_get_slot_image(slot);
     uint32_t reset_address = reset_handler & ~1u;
@@ -23,12 +20,10 @@ status_t boot_jump_validate_vectors(
         return ERR_SLOT_MISMATCH;
     }
     image_end = image->start + PARTITION_APP_IMAGE_SIZE;
-    if (msp <= BOOT_SRAM_START || msp > BOOT_SRAM_END ||
-        (msp & 7u) != 0u) {
+    if (msp <= BOOT_SRAM_START || msp > BOOT_SRAM_END || (msp & 7u) != 0u) {
         return ERR_IMAGE_INVALID;
     }
-    if ((reset_handler & 1u) == 0u ||
-        reset_address < image->start ||
+    if ((reset_handler & 1u) == 0u || reset_address < image->start ||
         reset_address >= image_end) {
         return ERR_IMAGE_INVALID;
     }
@@ -48,8 +43,8 @@ status_t boot_jump_to_slot(const boot_jump_port_t *port, app_slot_t slot)
     if (image == 0) {
         return ERR_SLOT_MISMATCH;
     }
-    status = port->read(port->context, image->start,
-                        (uint8_t *)vectors, sizeof(vectors));
+    status = port->read(
+        port->context, image->start, (uint8_t *)vectors, sizeof(vectors));
     if (status != SYS_OK) {
         return status;
     }

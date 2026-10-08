@@ -16,10 +16,8 @@ static int is_slot_or_none(app_slot_t slot)
 
 static int is_valid_state(boot_state_t state)
 {
-    return state == BOOT_STATE_NORMAL ||
-           state == BOOT_STATE_PENDING ||
-           state == BOOT_STATE_TRIAL ||
-           state == BOOT_STATE_ROLLBACK ||
+    return state == BOOT_STATE_NORMAL || state == BOOT_STATE_PENDING ||
+           state == BOOT_STATE_TRIAL || state == BOOT_STATE_ROLLBACK ||
            state == BOOT_STATE_MAINTENANCE;
 }
 
@@ -40,7 +38,8 @@ static int version_input_valid(const char *version)
     return 0;
 }
 
-static int version_array_valid(const char version[BOOT_METADATA_VERSION_LEN], int require_nonempty)
+static int version_array_valid(const char version[BOOT_METADATA_VERSION_LEN],
+                               int require_nonempty)
 {
     size_t i;
 
@@ -70,12 +69,14 @@ static int version_array_empty(const char version[BOOT_METADATA_VERSION_LEN])
     return 1;
 }
 
-static void version_copy(char out[BOOT_METADATA_VERSION_LEN], const char *version)
+static void version_copy(char out[BOOT_METADATA_VERSION_LEN],
+                         const char *version)
 {
     size_t i;
 
     memset(out, 0, BOOT_METADATA_VERSION_LEN);
-    for (i = 0u; i < BOOT_METADATA_VERSION_LEN - 1u && version[i] != '\0'; ++i) {
+    for (i = 0u; i < BOOT_METADATA_VERSION_LEN - 1u && version[i] != '\0';
+         ++i) {
         out[i] = version[i];
     }
 }
@@ -123,7 +124,8 @@ static status_t crc_update_u32_le(crc32_context_t *ctx, uint32_t value)
     return crc32_update(ctx, bytes, sizeof(bytes));
 }
 
-static status_t metadata_crc32_compute(const boot_metadata_t *metadata, uint32_t *out_crc)
+static status_t metadata_crc32_compute(const boot_metadata_t *metadata,
+                                       uint32_t *out_crc)
 {
     crc32_context_t ctx;
     status_t status;
@@ -137,31 +139,36 @@ static status_t metadata_crc32_compute(const boot_metadata_t *metadata, uint32_t
         return status;
     }
 
-#define UPDATE_OR_RETURN(expr) do { \
-    status = (expr); \
-    if (status != SYS_OK) { \
-        return status; \
-    } \
-} while (0)
+#define UPDATE_OR_RETURN(expr)                                                 \
+    do {                                                                       \
+        status = (expr);                                                       \
+        if (status != SYS_OK) {                                                \
+            return status;                                                     \
+        }                                                                      \
+    } while (0)
 
     UPDATE_OR_RETURN(crc_update_u32_le(&ctx, metadata->metadata_magic));
     UPDATE_OR_RETURN(crc_update_u16_le(&ctx, metadata->metadata_version));
     UPDATE_OR_RETURN(crc_update_u32_le(&ctx, metadata->sequence));
     UPDATE_OR_RETURN(crc_update_u32_le(&ctx, (uint32_t)metadata->active_slot));
-    UPDATE_OR_RETURN(crc_update_u32_le(&ctx, (uint32_t)metadata->previous_slot));
+    UPDATE_OR_RETURN(
+        crc_update_u32_le(&ctx, (uint32_t)metadata->previous_slot));
     UPDATE_OR_RETURN(crc_update_u32_le(&ctx, (uint32_t)metadata->pending_slot));
     UPDATE_OR_RETURN(crc_update_u32_le(&ctx, (uint32_t)metadata->boot_state));
     UPDATE_OR_RETURN(crc_update_u8(&ctx, metadata->boot_attempt));
     UPDATE_OR_RETURN(crc_update_u8(&ctx, metadata->max_boot_attempt));
     UPDATE_OR_RETURN(crc_update_u8(&ctx, metadata->boot_ok));
-    UPDATE_OR_RETURN(crc32_update(&ctx, (const uint8_t *)metadata->active_version,
+    UPDATE_OR_RETURN(crc32_update(&ctx,
+                                  (const uint8_t *)metadata->active_version,
                                   sizeof(metadata->active_version)));
-    UPDATE_OR_RETURN(crc32_update(&ctx, (const uint8_t *)metadata->pending_version,
+    UPDATE_OR_RETURN(crc32_update(&ctx,
+                                  (const uint8_t *)metadata->pending_version,
                                   sizeof(metadata->pending_version)));
     UPDATE_OR_RETURN(crc_update_u32_le(&ctx, metadata->last_reset_reason));
     UPDATE_OR_RETURN(crc_update_u32_le(&ctx, metadata->rollback_reason));
     UPDATE_OR_RETURN(crc_update_u32_le(&ctx, metadata->staging_image_crc32));
-    UPDATE_OR_RETURN(crc32_update(&ctx, metadata->staging_image_sha256,
+    UPDATE_OR_RETURN(crc32_update(&ctx,
+                                  metadata->staging_image_sha256,
                                   sizeof(metadata->staging_image_sha256)));
     UPDATE_OR_RETURN(crc_update_u32_le(&ctx, 0u));
 
@@ -174,8 +181,7 @@ static status_t validate_normal_like(const boot_metadata_t *metadata)
 {
     if (!is_app_slot(metadata->active_slot) ||
         !is_slot_or_none(metadata->previous_slot) ||
-        metadata->pending_slot != SLOT_NONE ||
-        metadata->boot_attempt != 0u ||
+        metadata->pending_slot != SLOT_NONE || metadata->boot_attempt != 0u ||
         metadata->boot_ok != 1u ||
         !version_array_valid(metadata->active_version, 1) ||
         !version_array_empty(metadata->pending_version) ||
@@ -207,8 +213,7 @@ static status_t validate_state_consistency(const boot_metadata_t *metadata)
             !is_slot_or_none(metadata->previous_slot) ||
             !is_app_slot(metadata->pending_slot) ||
             metadata->pending_slot == metadata->active_slot ||
-            metadata->boot_attempt != 0u ||
-            metadata->boot_ok != 1u ||
+            metadata->boot_attempt != 0u || metadata->boot_ok != 1u ||
             !version_array_valid(metadata->active_version, 1) ||
             !version_array_valid(metadata->pending_version, 1) ||
             !sha256_nonzero(metadata->staging_image_sha256) ||
@@ -237,8 +242,7 @@ static status_t validate_state_consistency(const boot_metadata_t *metadata)
         if (!is_app_slot(metadata->active_slot) ||
             !is_app_slot(metadata->previous_slot) ||
             metadata->pending_slot != SLOT_NONE ||
-            metadata->boot_attempt != 0u ||
-            metadata->boot_ok != 1u ||
+            metadata->boot_attempt != 0u || metadata->boot_ok != 1u ||
             metadata->rollback_reason == BOOT_ROLLBACK_NONE ||
             !version_array_valid(metadata->active_version, 1) ||
             !version_array_empty(metadata->pending_version) ||
@@ -252,8 +256,7 @@ static status_t validate_state_consistency(const boot_metadata_t *metadata)
         if (metadata->active_slot != SLOT_NONE ||
             metadata->previous_slot != SLOT_NONE ||
             metadata->pending_slot != SLOT_NONE ||
-            metadata->boot_attempt != 0u ||
-            metadata->boot_ok != 0u ||
+            metadata->boot_attempt != 0u || metadata->boot_ok != 0u ||
             !version_array_empty(metadata->active_version) ||
             !version_array_empty(metadata->pending_version) ||
             metadata->staging_image_crc32 != 0u ||
@@ -282,10 +285,12 @@ static void init_maintenance(boot_metadata_t *metadata)
     (void)boot_meta_refresh_crc(metadata);
 }
 
-status_t boot_meta_init_default(boot_metadata_t *metadata, app_slot_t active_slot,
+status_t boot_meta_init_default(boot_metadata_t *metadata,
+                                app_slot_t active_slot,
                                 const char *active_version)
 {
-    if (metadata == 0 || !is_app_slot(active_slot) || !version_input_valid(active_version)) {
+    if (metadata == 0 || !is_app_slot(active_slot) ||
+        !version_input_valid(active_version)) {
         return ERR_INVALID_ARG;
     }
 
@@ -349,7 +354,8 @@ status_t boot_meta_refresh_crc(boot_metadata_t *metadata)
     return SYS_OK;
 }
 
-status_t boot_meta_load(const boot_meta_store_t *store, boot_metadata_t *out_metadata,
+status_t boot_meta_load(const boot_meta_store_t *store,
+                        boot_metadata_t *out_metadata,
                         app_slot_t *out_copy_slot)
 {
     boot_metadata_t copy_a;
@@ -361,7 +367,8 @@ status_t boot_meta_load(const boot_meta_store_t *store, boot_metadata_t *out_met
     int a_ok;
     int b_ok;
 
-    if (store == 0 || store->read == 0 || out_metadata == 0 || out_copy_slot == 0) {
+    if (store == 0 || store->read == 0 || out_metadata == 0 ||
+        out_copy_slot == 0) {
         return ERR_INVALID_ARG;
     }
 
@@ -406,18 +413,25 @@ status_t boot_meta_load(const boot_meta_store_t *store, boot_metadata_t *out_met
     return ERR_METADATA_INVALID;
 }
 
-status_t boot_meta_commit(const boot_meta_store_t *store, const boot_metadata_t *current,
-                          app_slot_t current_copy_slot, const boot_metadata_t *desired,
-                          boot_metadata_t *out_committed, app_slot_t *out_copy_slot)
+status_t boot_meta_commit(const boot_meta_store_t *store,
+                          const boot_meta_commit_request_t *parameters)
 {
+    if (parameters == 0) {
+        return ERR_INVALID_ARG;
+    }
+    const boot_metadata_t *current = parameters->current;
+    app_slot_t current_copy_slot = parameters->current_copy_slot;
+    const boot_metadata_t *desired = parameters->desired;
+    boot_metadata_t *out_committed = parameters->out_committed;
+    app_slot_t *out_copy_slot = parameters->out_copy_slot;
+
     app_slot_t target_slot;
     boot_metadata_t committed;
     boot_metadata_t readback;
     status_t status;
 
-    if (store == 0 || store->read == 0 || store->write == 0 ||
-        current == 0 || desired == 0 ||
-        out_committed == 0 || out_copy_slot == 0) {
+    if (store == 0 || store->read == 0 || store->write == 0 || current == 0 ||
+        desired == 0 || out_committed == 0 || out_copy_slot == 0) {
         return ERR_INVALID_ARG;
     }
 
@@ -476,15 +490,23 @@ status_t boot_meta_commit(const boot_meta_store_t *store, const boot_metadata_t 
     return SYS_OK;
 }
 
-status_t boot_meta_request_staging(const boot_metadata_t *current, app_slot_t pending_slot,
-                                   const char *pending_version, uint32_t staging_crc32,
-                                   const uint8_t staging_sha256[IMAGE_SHA256_LEN],
-                                   boot_metadata_t *out_metadata)
+status_t boot_meta_request_staging(const boot_metadata_t *current,
+                                   const boot_staging_request_t *parameters)
 {
+    if (parameters == 0) {
+        return ERR_INVALID_ARG;
+    }
+    app_slot_t pending_slot = parameters->pending_slot;
+    const char *pending_version = parameters->pending_version;
+    uint32_t staging_crc32 = parameters->staging_crc32;
+    const uint8_t *staging_sha256 = parameters->staging_sha256;
+    boot_metadata_t *out_metadata = parameters->out_metadata;
+
     boot_metadata_t next;
     status_t status;
 
-    if (current == 0 || pending_version == 0 || staging_sha256 == 0 || out_metadata == 0) {
+    if (current == 0 || pending_version == 0 || staging_sha256 == 0 ||
+        out_metadata == 0) {
         return ERR_INVALID_ARG;
     }
     if (!is_app_slot(pending_slot)) {
@@ -533,7 +555,8 @@ status_t boot_meta_request_staging(const boot_metadata_t *current, app_slot_t pe
     return SYS_OK;
 }
 
-status_t boot_meta_request_trial(const boot_metadata_t *current, boot_metadata_t *out_metadata)
+status_t boot_meta_request_trial(const boot_metadata_t *current,
+                                 boot_metadata_t *out_metadata)
 {
     boot_metadata_t next;
     status_t status;
@@ -576,7 +599,8 @@ status_t boot_meta_request_trial(const boot_metadata_t *current, boot_metadata_t
     return SYS_OK;
 }
 
-status_t boot_meta_confirm_boot_ok(const boot_metadata_t *current, boot_metadata_t *out_metadata)
+status_t boot_meta_confirm_boot_ok(const boot_metadata_t *current,
+                                   boot_metadata_t *out_metadata)
 {
     boot_metadata_t next;
     status_t status;
@@ -590,7 +614,8 @@ status_t boot_meta_confirm_boot_ok(const boot_metadata_t *current, boot_metadata
     if (status != SYS_OK) {
         return status;
     }
-    if (current->boot_state != BOOT_STATE_TRIAL || !is_app_slot(current->pending_slot)) {
+    if (current->boot_state != BOOT_STATE_TRIAL ||
+        !is_app_slot(current->pending_slot)) {
         return ERR_METADATA_INVALID;
     }
 
@@ -621,7 +646,8 @@ status_t boot_meta_confirm_boot_ok(const boot_metadata_t *current, boot_metadata
     return SYS_OK;
 }
 
-status_t boot_meta_mark_rollback(const boot_metadata_t *current, uint32_t rollback_reason,
+status_t boot_meta_mark_rollback(const boot_metadata_t *current,
+                                 uint32_t rollback_reason,
                                  boot_metadata_t *out_metadata)
 {
     boot_metadata_t next;
@@ -687,19 +713,22 @@ status_t boot_meta_recover_by_scan(const boot_meta_recovery_scan_t *scan,
         return ERR_INVALID_ARG;
     }
 
-    if (scan->app_a.image_valid != 0u && scan->app_a.image_state == IMAGE_STATE_CONFIRMED) {
+    if (scan->app_a.image_valid != 0u &&
+        scan->app_a.image_state == IMAGE_STATE_CONFIRMED) {
         confirmed_slot = SLOT_A;
         confirmed_version = scan->app_a.version;
         confirmed_count++;
     }
-    if (scan->app_b.image_valid != 0u && scan->app_b.image_state == IMAGE_STATE_CONFIRMED) {
+    if (scan->app_b.image_valid != 0u &&
+        scan->app_b.image_state == IMAGE_STATE_CONFIRMED) {
         confirmed_slot = SLOT_B;
         confirmed_version = scan->app_b.version;
         confirmed_count++;
     }
 
     if (confirmed_count == 1u) {
-        status = boot_meta_init_default(out_metadata, confirmed_slot, confirmed_version);
+        status = boot_meta_init_default(
+            out_metadata, confirmed_slot, confirmed_version);
         if (status == SYS_OK) {
             out_metadata->rollback_reason = BOOT_ROLLBACK_RECOVER_META_LOST;
             return boot_meta_refresh_crc(out_metadata);

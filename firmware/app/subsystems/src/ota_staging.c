@@ -13,8 +13,7 @@ static status_t record_result(ota_staging_t *staging, status_t status)
     return status;
 }
 
-status_t ota_staging_construct(ota_staging_t *staging,
-                               storage_media_t *media)
+status_t ota_staging_construct(ota_staging_t *staging, storage_media_t *media)
 {
     if (staging == 0 || media == 0 || media->sector_size == 0u ||
         media->page_size == 0u) {
@@ -44,8 +43,7 @@ status_t ota_staging_begin(ota_staging_t *staging, size_t package_size)
     return record_result(staging, SYS_OK);
 }
 
-status_t ota_staging_erase_next(ota_staging_t *staging,
-                                uint8_t *out_complete)
+status_t ota_staging_erase_next(ota_staging_t *staging, uint8_t *out_complete)
 {
     uint32_t required_end;
     status_t status;
@@ -57,15 +55,14 @@ status_t ota_staging_erase_next(ota_staging_t *staging,
         staging->health.prepared == 0u || out_complete == 0) {
         return record_result(staging, ERR_INVALID_ARG);
     }
-    required_end = EXTERNAL_FLASH_OTA_STAGING_START +
-                   staging->package_size;
+    required_end = EXTERNAL_FLASH_OTA_STAGING_START + staging->package_size;
     if (staging->next_erase_address >= required_end) {
         staging->health.erase_complete = 1u;
         *out_complete = 1u;
         return record_result(staging, SYS_OK);
     }
-    status = storage_media_erase_sector(staging->media,
-                                        staging->next_erase_address);
+    status =
+        storage_media_erase_sector(staging->media, staging->next_erase_address);
     if (status != SYS_OK) {
         return record_result(staging, status);
     }
@@ -79,8 +76,10 @@ status_t ota_staging_erase_next(ota_staging_t *staging,
     return record_result(staging, SYS_OK);
 }
 
-status_t ota_staging_write(ota_staging_t *staging, uint32_t offset,
-                           const uint8_t *data, size_t length)
+status_t ota_staging_write(ota_staging_t *staging,
+                           uint32_t offset,
+                           const uint8_t *data,
+                           size_t length)
 {
     uint8_t verify[EXTERNAL_FLASH_PAGE_SIZE];
     uint32_t address;
@@ -123,17 +122,19 @@ status_t ota_staging_commit_metadata(ota_staging_t *staging,
         staging->next_write_offset != staging->package_size) {
         return record_result(staging, ERR_INVALID_ARG);
     }
-    status = storage_media_erase_sector(
-        staging->media, EXTERNAL_FLASH_OTA_METADATA_START);
+    status = storage_media_erase_sector(staging->media,
+                                        EXTERNAL_FLASH_OTA_METADATA_START);
     if (status == SYS_OK) {
-        status = storage_media_program(
-            staging->media, EXTERNAL_FLASH_OTA_METADATA_START,
-            record, record_size);
+        status = storage_media_program(staging->media,
+                                       EXTERNAL_FLASH_OTA_METADATA_START,
+                                       record,
+                                       record_size);
     }
     if (status == SYS_OK) {
-        status = storage_media_read(
-            staging->media, EXTERNAL_FLASH_OTA_METADATA_START,
-            verify, sizeof(verify));
+        status = storage_media_read(staging->media,
+                                    EXTERNAL_FLASH_OTA_METADATA_START,
+                                    verify,
+                                    sizeof(verify));
     }
     if (status == SYS_OK && memcmp(verify, record, sizeof(verify)) != 0) {
         status = ERR_FLASH_VERIFY;

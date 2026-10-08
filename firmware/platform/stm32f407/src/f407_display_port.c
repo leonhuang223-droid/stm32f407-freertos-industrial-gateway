@@ -27,34 +27,39 @@ static status_t display_init(void *context, uint16_t width, uint16_t height)
     f407_display_context_t *display = context;
     status_t status;
 
-    if (display == 0 || width != F407_LCD_WIDTH ||
-        height != F407_LCD_HEIGHT) {
+    if (display == 0 || width != F407_LCD_WIDTH || height != F407_LCD_HEIGHT) {
         return ERR_INVALID_ARG;
     }
     lcd_bus_reset(&display->bus, 1u);
     lcd_bus_delay(&display->bus, 10u);
     lcd_bus_reset(&display->bus, 0u);
     lcd_bus_delay(&display->bus, 120u);
-    status = lcd_controller_detect(&display->controller, &display->bus,
-                                   width, height);
+    status = lcd_controller_detect(
+        &display->controller, &display->bus, width, height);
     if (status == SYS_OK) {
         status = lcd_controller_init(&display->controller);
     }
     return status;
 }
 
-static status_t display_flush(void *context, const display_area_t *area,
-                              const uint16_t *pixels, size_t pixel_count)
+static status_t display_flush(void *context,
+                              const display_area_t *area,
+                              const uint16_t *pixels,
+                              size_t pixel_count)
 {
     f407_display_context_t *display = context;
 
-    if (display == 0 || area == 0 || pixels == 0 ||
-        area->x1 < 0 || area->y1 < 0) {
+    if (display == 0 || area == 0 || pixels == 0 || area->x1 < 0 ||
+        area->y1 < 0) {
         return ERR_INVALID_ARG;
     }
-    return lcd_controller_flush(
-        &display->controller, (uint16_t)area->x1, (uint16_t)area->y1,
-        (uint16_t)area->x2, (uint16_t)area->y2, pixels, pixel_count);
+    return lcd_controller_flush(&display->controller,
+                                &(const lcd_flush_request_t){(uint16_t)area->x1,
+                                                             (uint16_t)area->y1,
+                                                             (uint16_t)area->x2,
+                                                             (uint16_t)area->y2,
+                                                             pixels,
+                                                             pixel_count});
 }
 
 static status_t display_set_backlight(void *context, uint8_t percent)
@@ -102,20 +107,17 @@ static status_t display_resume(void *context)
     return status;
 }
 
-static const display_device_ops_t display_ops = {
-    display_init,
-    display_flush,
-    display_set_backlight,
-    display_suspend,
-    display_resume
-};
+static const display_device_ops_t display_ops = {display_init,
+                                                 display_flush,
+                                                 display_set_backlight,
+                                                 display_suspend,
+                                                 display_resume};
 
 static status_t input_init(void *context, uint16_t width, uint16_t height)
 {
     f407_input_context_t *input = context;
 
-    if (input == 0 || width != F407_LCD_WIDTH ||
-        height != F407_LCD_HEIGHT) {
+    if (input == 0 || width != F407_LCD_WIDTH || height != F407_LCD_HEIGHT) {
         return ERR_INVALID_ARG;
     }
     f407_gt911_port_bind_current_task();
@@ -133,8 +135,8 @@ static status_t input_read(void *context, input_sample_t *sample)
     (void)f407_gt911_port_take_interrupt();
     status = gt911_read(&input->controller, sample);
     if (status == SYS_OK) {
-        sample->timestamp_ms = (uint32_t)(xTaskGetTickCount() *
-                                          portTICK_PERIOD_MS);
+        sample->timestamp_ms =
+            (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
     }
     return status;
 }
@@ -154,15 +156,11 @@ static status_t input_resume(void *context)
 }
 
 static const input_device_ops_t input_ops = {
-    input_init,
-    input_read,
-    input_suspend,
-    input_resume
-};
+    input_init, input_read, input_suspend, input_resume};
 
 status_t f407_display_configure(app_context_t *context)
 {
-    app_ui_config_t config = { 0 };
+    app_ui_config_t config = {0};
     status_t status;
 
     if (context == 0) {

@@ -47,11 +47,12 @@ status_t config_subsystem_construct(config_subsystem_t *subsystem,
 status_t config_subsystem_prepare(config_subsystem_t *subsystem,
                                   const config_patch_t *patch,
                                   gateway_storage_config_request_t *request);
-status_t config_subsystem_commit(
-    config_subsystem_t *subsystem,
-    const gateway_storage_config_request_t *request);
+status_t
+config_subsystem_commit(config_subsystem_t *subsystem,
+                        const gateway_storage_config_request_t *request);
 status_t config_subsystem_reject(config_subsystem_t *subsystem,
-                                 uint32_t request_id, status_t reason);
+                                 uint32_t request_id,
+                                 status_t reason);
 status_t config_subsystem_get(const config_subsystem_t *subsystem,
                               gateway_runtime_config_t *config);
 status_t config_subsystem_get_health(const config_subsystem_t *subsystem,

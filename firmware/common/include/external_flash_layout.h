@@ -27,11 +27,11 @@
 #define EXTERNAL_FLASH_RESERVED_START 0x00710000u
 #define EXTERNAL_FLASH_RESERVED_SIZE 0x008F0000u
 
-#if (EXTERNAL_FLASH_OTA_STAGING_START + EXTERNAL_FLASH_OTA_STAGING_SIZE) != \
+#if (EXTERNAL_FLASH_OTA_STAGING_START + EXTERNAL_FLASH_OTA_STAGING_SIZE) !=    \
     EXTERNAL_FLASH_OTA_METADATA_START
 #error "OTA staging and metadata layout is not contiguous"
 #endif
-#if (EXTERNAL_FLASH_RESERVED_START + EXTERNAL_FLASH_RESERVED_SIZE) != \
+#if (EXTERNAL_FLASH_RESERVED_START + EXTERNAL_FLASH_RESERVED_SIZE) !=          \
     EXTERNAL_FLASH_TOTAL_SIZE
 #error "External Flash layout does not cover W25Q128 capacity"
 #endif
@@ -53,8 +53,8 @@ typedef struct {
     uint32_t size;
 } external_flash_partition_t;
 
-const external_flash_partition_t *external_flash_partition_get(
-    external_flash_partition_id_t id);
+const external_flash_partition_t *
+external_flash_partition_get(external_flash_partition_id_t id);
 status_t external_flash_layout_validate(void);
 
 #endif

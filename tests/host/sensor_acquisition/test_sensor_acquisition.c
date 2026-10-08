@@ -67,11 +67,18 @@ static status_t fake_i2c_read(void *context, uint8_t address,
     return SYS_OK;
 }
 
-static status_t fake_i2c_write_read(void *context, uint8_t address,
-                                    const uint8_t *write_data,
-                                    size_t write_length,
-                                    uint8_t *read_data, size_t read_length)
+static status_t fake_i2c_write_read(void *context,
+    uint8_t address,
+    const i2c_transfer_t *parameters)
 {
+    if (parameters == 0) {
+        return ERR_INVALID_ARG;
+    }
+    const uint8_t *write_data = parameters->write_data;
+    size_t write_length = parameters->write_length;
+    uint8_t *read_data = parameters->read_data;
+    size_t read_length = parameters->read_length;
+
     fake_i2c_t *fake = context;
 
     if (address == 0x48u && write_length == 1u && read_length == 2u) {

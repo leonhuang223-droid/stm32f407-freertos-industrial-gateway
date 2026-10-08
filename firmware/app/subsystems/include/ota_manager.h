@@ -59,25 +59,29 @@ typedef struct {
 
 /** Port contract keeps policy independent from HTTP, RTOS, and Flash. */
 typedef struct {
-    status_t (*fetch_manifest)(void *context, const char *url,
-                               uint8_t *buffer, size_t capacity,
+    status_t (*fetch_manifest)(void *context,
+                               const char *url,
+                               uint8_t *buffer,
+                               size_t capacity,
                                size_t *out_length);
-    status_t (*http_open)(void *context, const char *url,
+    status_t (*http_open)(void *context,
+                          const char *url,
                           uint32_t *out_content_length);
-    status_t (*http_read)(void *context, uint8_t *buffer,
-                          size_t capacity, size_t *out_length);
+    status_t (*http_read)(void *context,
+                          uint8_t *buffer,
+                          size_t capacity,
+                          size_t *out_length);
     status_t (*http_close)(void *context);
     status_t (*staging_begin)(void *context, size_t package_size);
-    status_t (*staging_write)(void *context, uint32_t offset,
-                              const uint8_t *data, size_t length);
-    status_t (*metadata_load)(void *context, boot_metadata_t *out_metadata,
+    status_t (*staging_write)(void *context,
+                              uint32_t offset,
+                              const uint8_t *data,
+                              size_t length);
+    status_t (*metadata_load)(void *context,
+                              boot_metadata_t *out_metadata,
                               app_slot_t *out_copy_slot);
     status_t (*metadata_commit)(void *context,
-                                const boot_metadata_t *current,
-                                app_slot_t current_copy_slot,
-                                const boot_metadata_t *desired,
-                                boot_metadata_t *out_committed,
-                                app_slot_t *out_copy_slot);
+                                const boot_meta_commit_request_t *request);
     status_t (*ota_metadata_commit)(void *context,
                                     const uint8_t *record,
                                     size_t record_size);
@@ -112,7 +116,8 @@ typedef struct {
 } ota_manager_t;
 
 status_t ota_metadata_encode(const ota_metadata_record_t *record,
-                             uint8_t *buffer, size_t capacity);
+                             uint8_t *buffer,
+                             size_t capacity);
 status_t ota_manager_construct(ota_manager_t *manager,
                                const ota_manager_port_t *port,
                                const ota_manager_config_t *config);

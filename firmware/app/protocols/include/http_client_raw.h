@@ -39,16 +39,28 @@ typedef struct {
 status_t http_client_construct(http_client_raw_t *client,
                                network_transport_t *transport,
                                uint32_t receive_timeout_ms);
-status_t http_parse_url(const char *url, char *out_host, size_t host_size,
-                        char *out_path, size_t path_size,
-                        uint16_t *out_port);
-status_t http_parse_header(const char *header,
-                           http_header_info_t *out_info);
+/** Synchronous request; pointed-to buffers remain caller-owned.
+ * @author 兆鸣嵌入式
+ */
+typedef struct {
+    char *out_host;
+    size_t host_size;
+    char *out_path;
+    size_t path_size;
+    uint16_t *out_port;
+} http_url_output_t;
+
+status_t http_parse_url(const char *url, const http_url_output_t *parameters);
+status_t http_parse_header(const char *header, http_header_info_t *out_info);
 status_t http_open_get(http_client_raw_t *client, const char *url);
-status_t http_read_body_chunk(http_client_raw_t *client, uint8_t *buffer,
-                              size_t buffer_size, size_t *out_length);
-status_t http_get_document(http_client_raw_t *client, const char *url,
-                           uint8_t *buffer, size_t buffer_size,
+status_t http_read_body_chunk(http_client_raw_t *client,
+                              uint8_t *buffer,
+                              size_t buffer_size,
+                              size_t *out_length);
+status_t http_get_document(http_client_raw_t *client,
+                           const char *url,
+                           uint8_t *buffer,
+                           size_t buffer_size,
                            size_t *out_length);
 status_t http_close(http_client_raw_t *client);
 status_t http_get_stats(const http_client_raw_t *client,

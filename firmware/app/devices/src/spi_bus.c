@@ -4,10 +4,11 @@
 
 status_t spi_device_construct(spi_device_t *device,
                               const spi_device_ops_t *ops,
-                              void *context, uint32_t timeout_ms)
+                              void *context,
+                              uint32_t timeout_ms)
 {
-    if (device == 0 || ops == 0 || ops->select == 0 ||
-        ops->transfer == 0 || ops->delay_ms == 0 || timeout_ms == 0u) {
+    if (device == 0 || ops == 0 || ops->select == 0 || ops->transfer == 0 ||
+        ops->delay_ms == 0 || timeout_ms == 0u) {
         return ERR_INVALID_ARG;
     }
     memset(device, 0, sizeof(*device));
@@ -18,8 +19,10 @@ status_t spi_device_construct(spi_device_t *device,
     return SYS_OK;
 }
 
-status_t spi_device_transfer(spi_device_t *device, const uint8_t *tx,
-                             uint8_t *rx, size_t length)
+status_t spi_device_transfer(spi_device_t *device,
+                             const uint8_t *tx,
+                             uint8_t *rx,
+                             size_t length)
 {
     status_t status;
     status_t deselect_status;

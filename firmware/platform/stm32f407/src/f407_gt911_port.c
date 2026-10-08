@@ -50,14 +50,14 @@ static void delay_ms(void *context, uint32_t milliseconds)
 
 static void scl_write(uint8_t high)
 {
-    GT911_SCL_PORT->BSRR = high != 0u
-        ? GT911_SCL_PIN : (uint32_t)GT911_SCL_PIN << 16u;
+    GT911_SCL_PORT->BSRR =
+        high != 0u ? GT911_SCL_PIN : (uint32_t)GT911_SCL_PIN << 16u;
 }
 
 static void sda_write(uint8_t high)
 {
-    GT911_SDA_PORT->BSRR = high != 0u
-        ? GT911_SDA_PIN : (uint32_t)GT911_SDA_PIN << 16u;
+    GT911_SDA_PORT->BSRR =
+        high != 0u ? GT911_SDA_PIN : (uint32_t)GT911_SDA_PIN << 16u;
 }
 
 static uint8_t sda_read(void)
@@ -160,12 +160,13 @@ static status_t i2c_read_byte(uint8_t *value, uint8_t acknowledge)
 
 static status_t send_address(uint8_t address, uint8_t read)
 {
-    return i2c_write_byte((uint8_t)((address << 1u) |
-                           (read != 0u ? 1u : 0u)));
+    return i2c_write_byte((uint8_t)((address << 1u) | (read != 0u ? 1u : 0u)));
 }
 
-static status_t write_bytes(uint8_t address, const uint8_t *data,
-                            size_t length, uint8_t send_stop)
+static status_t write_bytes(uint8_t address,
+                            const uint8_t *data,
+                            size_t length,
+                            uint8_t send_stop)
 {
     size_t i;
     status_t status = i2c_start();
@@ -197,8 +198,8 @@ static status_t read_bytes(uint8_t address, uint8_t *data, size_t length)
     return status;
 }
 
-static status_t bus_write(void *context, uint8_t address,
-                          const uint8_t *data, size_t length)
+static status_t
+bus_write(void *context, uint8_t address, const uint8_t *data, size_t length)
 {
     (void)context;
     if (data == 0 || length == 0u) {
@@ -207,8 +208,8 @@ static status_t bus_write(void *context, uint8_t address,
     return write_bytes(address, data, length, 1u);
 }
 
-static status_t bus_read(void *context, uint8_t address,
-                         uint8_t *data, size_t length)
+static status_t
+bus_read(void *context, uint8_t address, uint8_t *data, size_t length)
 {
     (void)context;
     if (data == 0 || length == 0u) {
@@ -217,11 +218,17 @@ static status_t bus_read(void *context, uint8_t address,
     return read_bytes(address, data, length);
 }
 
-static status_t bus_write_read(void *context, uint8_t address,
-                               const uint8_t *write_data,
-                               size_t write_length, uint8_t *read_data,
-                               size_t read_length)
+static status_t
+bus_write_read(void *context, uint8_t address, const i2c_transfer_t *parameters)
 {
+    if (parameters == 0) {
+        return ERR_INVALID_ARG;
+    }
+    const uint8_t *write_data = parameters->write_data;
+    size_t write_length = parameters->write_length;
+    uint8_t *read_data = parameters->read_data;
+    size_t read_length = parameters->read_length;
+
     status_t status;
 
     (void)context;
@@ -238,7 +245,7 @@ static status_t bus_write_read(void *context, uint8_t address,
 
 static void configure_interrupt_input(void)
 {
-    GPIO_InitTypeDef gpio = { 0 };
+    GPIO_InitTypeDef gpio = {0};
 
     gpio.Pin = GT911_INT_PIN;
     gpio.Mode = GPIO_MODE_IT_FALLING;
@@ -251,7 +258,7 @@ static void configure_interrupt_input(void)
 
 static status_t select_address(void *context, uint8_t address)
 {
-    GPIO_InitTypeDef gpio = { 0 };
+    GPIO_InitTypeDef gpio = {0};
 
     (void)context;
     HAL_NVIC_DisableIRQ(EXTI9_5_IRQn);
@@ -261,9 +268,10 @@ static status_t select_address(void *context, uint8_t address)
     gpio.Pull = GPIO_NOPULL;
     gpio.Speed = GPIO_SPEED_FREQ_LOW;
     HAL_GPIO_Init(GT911_INT_PORT, &gpio);
-    HAL_GPIO_WritePin(GT911_INT_PORT, GT911_INT_PIN,
-                      address == GT911_DEFAULT_ADDRESS
-                          ? GPIO_PIN_RESET : GPIO_PIN_SET);
+    HAL_GPIO_WritePin(GT911_INT_PORT,
+                      GT911_INT_PIN,
+                      address == GT911_DEFAULT_ADDRESS ? GPIO_PIN_RESET
+                                                       : GPIO_PIN_SET);
     delay_ms(0, 10u);
     HAL_GPIO_WritePin(GT911_RESET_PORT, GT911_RESET_PIN, GPIO_PIN_SET);
     delay_ms(0, 6u);
@@ -275,7 +283,7 @@ static status_t select_address(void *context, uint8_t address)
 
 static status_t wake_controller(void *context)
 {
-    GPIO_InitTypeDef gpio = { 0 };
+    GPIO_InitTypeDef gpio = {0};
 
     (void)context;
     HAL_NVIC_DisableIRQ(EXTI9_5_IRQn);
@@ -293,7 +301,7 @@ static status_t wake_controller(void *context)
 
 static void configure_gpio(void)
 {
-    GPIO_InitTypeDef gpio = { 0 };
+    GPIO_InitTypeDef gpio = {0};
 
     __HAL_RCC_GPIOD_CLK_ENABLE();
     __HAL_RCC_GPIOG_CLK_ENABLE();
@@ -301,8 +309,7 @@ static void configure_gpio(void)
     DWT->CYCCNT = 0u;
     DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
 
-    HAL_GPIO_WritePin(GPIOD, GT911_SCL_PIN | GT911_SDA_PIN,
-                      GPIO_PIN_SET);
+    HAL_GPIO_WritePin(GPIOD, GT911_SCL_PIN | GT911_SDA_PIN, GPIO_PIN_SET);
     gpio.Pin = GT911_SCL_PIN | GT911_SDA_PIN;
     gpio.Mode = GPIO_MODE_OUTPUT_OD;
     gpio.Pull = GPIO_PULLUP;
@@ -320,14 +327,10 @@ static void configure_gpio(void)
 status_t f407_gt911_port_construct(gt911_t *device)
 {
     static const i2c_bus_ops_t bus_ops = {
-        bus_write, bus_read, bus_write_read, delay_ms
-    };
-    static const gt911_io_ops_t io_ops = {
-        select_address, wake_controller
-    };
+        bus_write, bus_read, bus_write_read, delay_ms};
+    static const gt911_io_ops_t io_ops = {select_address, wake_controller};
     static const gt911_config_t config = {
-        GT911_DEFAULT_ADDRESS, 800u, 480u, 0u, 0u, 0u
-    };
+        GT911_DEFAULT_ADDRESS, 800u, 480u, 0u, 0u, 0u};
     status_t status;
 
     if (device == 0) {
@@ -337,8 +340,8 @@ status_t f407_gt911_port_construct(gt911_t *device)
     gt911_context.initialized = 1u;
     status = i2c_bus_construct(&gt911_bus, &bus_ops, &gt911_context, 20u);
     if (status == SYS_OK) {
-        status = gt911_construct(device, &gt911_bus, &io_ops,
-                                 &gt911_context, &config);
+        status = gt911_construct(
+            device, &gt911_bus, &io_ops, &gt911_context, &config);
     }
     return status;
 }
@@ -366,11 +369,11 @@ void EXTI9_5_IRQHandler(void)
     if (__HAL_GPIO_EXTI_GET_IT(GT911_INT_PIN) != RESET) {
         __HAL_GPIO_EXTI_CLEAR_IT(GT911_INT_PIN);
         gt911_context.interrupt_pending = 1u;
-        if (gt911_context.initialized != 0u &&
-            gt911_context.owner_task != 0) {
+        if (gt911_context.initialized != 0u && gt911_context.owner_task != 0) {
             (void)xTaskNotifyFromISR(gt911_context.owner_task,
-                                    GT911_NOTIFY_VALUE, eSetBits,
-                                    &should_yield);
+                                     GT911_NOTIFY_VALUE,
+                                     eSetBits,
+                                     &should_yield);
         }
     }
     portYIELD_FROM_ISR(should_yield);

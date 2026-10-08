@@ -2,8 +2,10 @@
 
 #include <string.h>
 
-status_t i2c_bus_construct(i2c_bus_t *bus, const i2c_bus_ops_t *ops,
-                           void *context, uint32_t timeout_ms)
+status_t i2c_bus_construct(i2c_bus_t *bus,
+                           const i2c_bus_ops_t *ops,
+                           void *context,
+                           uint32_t timeout_ms)
 {
     if (bus == 0 || ops == 0 || ops->write == 0 || ops->read == 0 ||
         ops->write_read == 0 || ops->delay_ms == 0 || timeout_ms == 0u) {
@@ -19,13 +21,17 @@ status_t i2c_bus_construct(i2c_bus_t *bus, const i2c_bus_ops_t *ops,
 
 static status_t ready(const i2c_bus_t *bus)
 {
-    return bus != 0 && bus->initialized != 0u && bus->ops != 0
-        ? SYS_OK
-        : ERR_DEVICE_NOT_READY;
+    return bus != 0 && bus->initialized != 0u && bus->ops != 0 &&
+                   bus->ops->write != 0 && bus->ops->read != 0 &&
+                   bus->ops->write_read != 0 && bus->ops->delay_ms != 0
+               ? SYS_OK
+               : ERR_DEVICE_NOT_READY;
 }
 
-status_t i2c_bus_write(i2c_bus_t *bus, uint8_t address,
-                       const uint8_t *data, size_t length)
+status_t i2c_bus_write(i2c_bus_t *bus,
+                       uint8_t address,
+                       const uint8_t *data,
+                       size_t length)
 {
     status_t status = ready(bus);
 
@@ -38,8 +44,8 @@ status_t i2c_bus_write(i2c_bus_t *bus, uint8_t address,
     return bus->ops->write(bus->context, address, data, length);
 }
 
-status_t i2c_bus_read(i2c_bus_t *bus, uint8_t address,
-                      uint8_t *data, size_t length)
+status_t
+i2c_bus_read(i2c_bus_t *bus, uint8_t address, uint8_t *data, size_t length)
 {
     status_t status = ready(bus);
 
@@ -52,10 +58,18 @@ status_t i2c_bus_read(i2c_bus_t *bus, uint8_t address,
     return bus->ops->read(bus->context, address, data, length);
 }
 
-status_t i2c_bus_write_read(i2c_bus_t *bus, uint8_t address,
-                            const uint8_t *write_data, size_t write_length,
-                            uint8_t *read_data, size_t read_length)
+status_t i2c_bus_write_read(i2c_bus_t *bus,
+                            uint8_t address,
+                            const i2c_transfer_t *parameters)
 {
+    if (parameters == 0) {
+        return ERR_INVALID_ARG;
+    }
+    const uint8_t *write_data = parameters->write_data;
+    size_t write_length = parameters->write_length;
+    uint8_t *read_data = parameters->read_data;
+    size_t read_length = parameters->read_length;
+
     status_t status = ready(bus);
 
     if (status != SYS_OK) {
@@ -65,8 +79,7 @@ status_t i2c_bus_write_read(i2c_bus_t *bus, uint8_t address,
         read_data == 0 || read_length == 0u) {
         return ERR_INVALID_ARG;
     }
-    return bus->ops->write_read(bus->context, address, write_data,
-                                write_length, read_data, read_length);
+    return bus->ops->write_read(bus->context, address, parameters);
 }
 
 void i2c_bus_delay(i2c_bus_t *bus, uint32_t delay_ms)

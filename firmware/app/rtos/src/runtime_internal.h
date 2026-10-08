@@ -27,8 +27,8 @@
 #define OTA_NETWORK_REQUEST_QUEUE_LENGTH 1U
 #define OTA_STORAGE_REQUEST_QUEUE_LENGTH 1U
 #define POWER_COMMAND_QUEUE_LENGTH 4U
-#define STORAGE_QUEUE_SET_LENGTH \
-    (STORAGE_LOG_QUEUE_LENGTH + STORAGE_ALARM_QUEUE_LENGTH + \
+#define STORAGE_QUEUE_SET_LENGTH                                               \
+    (STORAGE_LOG_QUEUE_LENGTH + STORAGE_ALARM_QUEUE_LENGTH +                   \
      STORAGE_CONFIG_QUEUE_LENGTH + OTA_STORAGE_REQUEST_QUEUE_LENGTH)
 #define UI_ACTIVE_LOCK_HOLD_MS 3000u
 #define APP_RTOS_SYSTEM_TASK_CAPACITY 16u
@@ -56,9 +56,9 @@
 #define SYSTEM_EVENT_POWER_ACK_NETWORK (1UL << 15)
 #define SYSTEM_EVENT_POWER_ACK_STORAGE (1UL << 16)
 #define SYSTEM_EVENT_POWER_ACK_UI (1UL << 17)
-#define SYSTEM_EVENT_POWER_ACK_MASK \
-    (SYSTEM_EVENT_POWER_ACK_ACQUISITION | SYSTEM_EVENT_POWER_ACK_MODBUS | \
-     SYSTEM_EVENT_POWER_ACK_CAN | SYSTEM_EVENT_POWER_ACK_NETWORK | \
+#define SYSTEM_EVENT_POWER_ACK_MASK                                            \
+    (SYSTEM_EVENT_POWER_ACK_ACQUISITION | SYSTEM_EVENT_POWER_ACK_MODBUS |      \
+     SYSTEM_EVENT_POWER_ACK_CAN | SYSTEM_EVENT_POWER_ACK_NETWORK |             \
      SYSTEM_EVENT_POWER_ACK_STORAGE | SYSTEM_EVENT_POWER_ACK_UI)
 
 typedef enum {
@@ -155,11 +155,12 @@ typedef struct {
 } app_network_task_state_t;
 
 void app_storage_task_step(app_storage_task_context_t *context,
-    app_storage_task_state_t *state, uint32_t wait_ms);
+                           app_storage_task_state_t *state,
+                           uint32_t wait_ms);
 void app_network_task_init(app_network_task_context_t *context,
-    app_network_task_state_t *state);
+                           app_network_task_state_t *state);
 void app_network_task_step(app_network_task_context_t *context,
-    app_network_task_state_t *state);
+                           app_network_task_state_t *state);
 
 extern app_channel_handles_t channels;
 extern TaskHandle_t task_handles[GATEWAY_TASK_COUNT];
@@ -178,39 +179,45 @@ void ui_task(void *argument);
 void cli_task(void *argument);
 void notify_ota_waiter(TaskHandle_t waiter);
 void ota_network_request_complete(ota_network_request_t *request,
-                                          status_t status);
+                                  status_t status);
 void ota_storage_request_complete(ota_storage_request_t *request,
-                                          status_t status);
-status_t ota_port_fetch_manifest(void *opaque, const char *url,
-                                        uint8_t *buffer, size_t capacity,
-                                        size_t *out_length);
-status_t ota_port_http_open(void *opaque, const char *url,
-                                   uint32_t *out_content_length);
-status_t ota_port_http_read(void *opaque, uint8_t *buffer,
-                                   size_t capacity, size_t *out_length);
+                                  status_t status);
+status_t ota_port_fetch_manifest(void *opaque,
+                                 const char *url,
+                                 uint8_t *buffer,
+                                 size_t capacity,
+                                 size_t *out_length);
+status_t
+ota_port_http_open(void *opaque, const char *url, uint32_t *out_content_length);
+status_t ota_port_http_read(void *opaque,
+                            uint8_t *buffer,
+                            size_t capacity,
+                            size_t *out_length);
 status_t ota_port_http_close(void *opaque);
 status_t ota_port_staging_begin(void *opaque, size_t package_size);
-status_t ota_port_staging_write(void *opaque, uint32_t offset,
-                                       const uint8_t *data, size_t length);
+status_t ota_port_staging_write(void *opaque,
+                                uint32_t offset,
+                                const uint8_t *data,
+                                size_t length);
 status_t ota_port_metadata_load(void *opaque,
-                                       boot_metadata_t *out_metadata,
-                                       app_slot_t *out_copy_slot);
-status_t ota_port_metadata_commit(
-    void *opaque, const boot_metadata_t *current,
-    app_slot_t current_copy_slot, const boot_metadata_t *desired,
-    boot_metadata_t *out_committed, app_slot_t *out_copy_slot);
+                                boot_metadata_t *out_metadata,
+                                app_slot_t *out_copy_slot);
+status_t ota_port_metadata_commit(void *opaque,
+                                  const boot_meta_commit_request_t *parameters);
 status_t ota_port_staging_metadata_commit(void *opaque,
-                                                  const uint8_t *record,
-                                                  size_t record_size);
+                                          const uint8_t *record,
+                                          size_t record_size);
 void ota_port_enter_critical(void *opaque);
 void ota_port_exit_critical(void *opaque);
-status_t submit_config_patch(const config_patch_t *patch,
-                                    uint32_t *request_id);
+status_t submit_config_patch(const config_patch_t *patch, uint32_t *request_id);
 status_t acknowledge_alarm(uint32_t event_id);
-status_t app_config_read(gateway_runtime_config_t *config, config_health_t *health,
+status_t app_config_read(gateway_runtime_config_t *config,
+                         config_health_t *health,
                          uint32_t timeout_ms);
-status_t app_config_persist_request(const gateway_storage_config_request_t *request,
-    config_persist_fn persist, void *persist_context);
+status_t
+app_config_persist_request(const gateway_storage_config_request_t *request,
+                           config_persist_fn persist,
+                           void *persist_context);
 status_t app_runtime_read_snapshot(gateway_system_snapshot_t *snapshot);
 uint32_t deep_power_quiesced_mask(EventBits_t bits);
 void app_critical_enter(void);
@@ -218,6 +225,7 @@ void app_critical_exit(void);
 status_t power_lock_acquire(power_lock_id_t lock);
 status_t power_lock_release(power_lock_id_t lock);
 void collect_rtos_diagnostics(void);
+status_t app_runtime_read_diagnostics(app_rtos_diagnostics_t *diagnostics);
 const char *task_name_from_token(uint32_t task_token);
 const char *power_mode_name(power_mode_t mode);
 const char *power_policy_name(power_policy_t policy);

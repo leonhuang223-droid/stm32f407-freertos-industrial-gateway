@@ -36,8 +36,10 @@ typedef struct {
     uint8_t suspended;
 } gt911_t;
 
-status_t gt911_construct(gt911_t *device, i2c_bus_t *bus,
-                         const gt911_io_ops_t *io_ops, void *io_context,
+status_t gt911_construct(gt911_t *device,
+                         i2c_bus_t *bus,
+                         const gt911_io_ops_t *io_ops,
+                         void *io_context,
                          const gt911_config_t *config);
 status_t gt911_init(gt911_t *device);
 status_t gt911_read(gt911_t *device, input_sample_t *sample);

@@ -14,38 +14,36 @@ typedef struct {
 
 static uint16_t read_u16_le(const uint8_t *bytes)
 {
-    return (uint16_t)(
-        (uint16_t)bytes[0] |
-        (uint16_t)((uint16_t)bytes[1] << 8u));
+    return (uint16_t)((uint16_t)bytes[0] |
+                      (uint16_t)((uint16_t)bytes[1] << 8u));
 }
 
 static uint32_t read_u32_le(const uint8_t *bytes)
 {
-    return (uint32_t)bytes[0] |
-           ((uint32_t)bytes[1] << 8u) |
-           ((uint32_t)bytes[2] << 16u) |
-           ((uint32_t)bytes[3] << 24u);
+    return (uint32_t)bytes[0] | ((uint32_t)bytes[1] << 8u) |
+           ((uint32_t)bytes[2] << 16u) | ((uint32_t)bytes[3] << 24u);
 }
 
-static status_t bounded_package_read(
-    void *context, uint32_t offset, uint8_t *buffer, size_t length)
+static status_t bounded_package_read(void *context,
+                                     uint32_t offset,
+                                     uint8_t *buffer,
+                                     size_t length)
 {
     bounded_reader_t *reader = (bounded_reader_t *)context;
 
-    if (reader == 0 || reader->read_fn == 0 || buffer == 0 ||
-        length == 0u || offset > reader->package_size ||
+    if (reader == 0 || reader->read_fn == 0 || buffer == 0 || length == 0u ||
+        offset > reader->package_size ||
         length > (size_t)(reader->package_size - offset)) {
         return ERR_INVALID_ARG;
     }
-    return reader->read_fn(reader->read_context,
-                           BOOT_STAGING_START + offset, buffer, length);
+    return reader->read_fn(
+        reader->read_context, BOOT_STAGING_START + offset, buffer, length);
 }
 
-status_t boot_staging_package_load(
-    boot_staging_read_fn read_fn,
-    void *read_context,
-    const boot_metadata_t *metadata,
-    boot_staging_package_t *out_package)
+status_t boot_staging_package_load(boot_staging_read_fn read_fn,
+                                   void *read_context,
+                                   const boot_metadata_t *metadata,
+                                   boot_staging_package_t *out_package)
 {
     uint8_t wire[BOOT_STAGING_METADATA_WIRE_SIZE];
     uint32_t expected_crc;
@@ -63,8 +61,8 @@ status_t boot_staging_package_load(
         return status != SYS_OK ? status : ERR_METADATA_INVALID;
     }
 
-    status = read_fn(read_context, BOOT_STAGING_METADATA_START,
-                     wire, sizeof(wire));
+    status =
+        read_fn(read_context, BOOT_STAGING_METADATA_START, wire, sizeof(wire));
     if (status != SYS_OK) {
         return status;
     }
@@ -99,8 +97,8 @@ status_t boot_staging_package_load(
     if (read_u32_le(&wire[20]) != metadata->staging_image_crc32) {
         return ERR_CRC;
     }
-    if (memcmp(&wire[24], metadata->staging_image_sha256,
-               IMAGE_SHA256_LEN) != 0) {
+    if (memcmp(&wire[24], metadata->staging_image_sha256, IMAGE_SHA256_LEN) !=
+        0) {
         return ERR_SHA256;
     }
 
@@ -112,11 +110,10 @@ status_t boot_staging_package_load(
     return SYS_OK;
 }
 
-static status_t verify_package_digest(
-    bounded_reader_t *reader,
-    const boot_staging_package_t *package,
-    uint8_t *scratch,
-    size_t scratch_size)
+static status_t verify_package_digest(bounded_reader_t *reader,
+                                      const boot_staging_package_t *package,
+                                      uint8_t *scratch,
+                                      size_t scratch_size)
 {
     crc32_context_t crc;
     sha256_context_t sha;
@@ -136,9 +133,8 @@ static status_t verify_package_digest(
 
     while (offset < package->package_size) {
         uint32_t remaining = package->package_size - offset;
-        size_t chunk = scratch_size < (size_t)remaining
-            ? scratch_size
-            : (size_t)remaining;
+        size_t chunk =
+            scratch_size < (size_t)remaining ? scratch_size : (size_t)remaining;
 
         status = bounded_package_read(reader, offset, scratch, chunk);
         if (status != SYS_OK) {
@@ -167,19 +163,19 @@ static status_t verify_package_digest(
         return status;
     }
     return memcmp(digest, package->package_sha256, sizeof(digest)) == 0
-        ? SYS_OK
-        : ERR_SHA256;
+               ? SYS_OK
+               : ERR_SHA256;
 }
 
-status_t boot_staging_validate_min_bootloader_version(
-    const image_header_t *header)
+status_t
+boot_staging_validate_min_bootloader_version(const image_header_t *header)
 {
     int compare_result;
     status_t status;
 
-    if (header == 0 ||
-        header->min_bootloader_version[0] == '\0' ||
-        memchr(header->min_bootloader_version, '\0',
+    if (header == 0 || header->min_bootloader_version[0] == '\0' ||
+        memchr(header->min_bootloader_version,
+               '\0',
                sizeof(header->min_bootloader_version)) == 0) {
         return ERR_IMAGE_INVALID;
     }
@@ -192,15 +188,48 @@ status_t boot_staging_validate_min_bootloader_version(
     return compare_result <= 0 ? SYS_OK : ERR_UNSUPPORTED;
 }
 
-status_t boot_staging_package_validate(
-    boot_staging_read_fn read_fn,
-    void *read_context,
-    const boot_metadata_t *metadata,
-    uint8_t *scratch,
-    size_t scratch_size,
-    boot_staging_package_t *out_package,
-    image_header_t *out_header)
+static status_t validate_staging_header(bounded_reader_t *reader,
+                                        const boot_staging_package_t *package,
+                                        image_header_t *header)
 {
+    status_t status;
+
+    status =
+        bounded_package_read(reader, 0u, (uint8_t *)header, sizeof(*header));
+    if (status != SYS_OK) {
+        return status;
+    }
+    status = image_header_validate_for_slot(header, package->target_slot);
+    if (status != SYS_OK ||
+        image_header_get_state(header) != IMAGE_STATE_CANDIDATE) {
+        return status != SYS_OK ? status : ERR_IMAGE_INVALID;
+    }
+    status = boot_staging_validate_min_bootloader_version(header);
+    if (status != SYS_OK) {
+        return status;
+    }
+    status =
+        image_header_validate_package_layout(header, package->package_size);
+    if (status != SYS_OK) {
+        return status;
+    }
+    return SYS_OK;
+}
+
+status_t
+boot_staging_package_validate(boot_staging_read_fn read_fn,
+                              const boot_package_validation_t *parameters)
+{
+    if (parameters == 0) {
+        return ERR_INVALID_ARG;
+    }
+    void *read_context = parameters->read_context;
+    const boot_metadata_t *metadata = parameters->metadata;
+    uint8_t *scratch = parameters->scratch;
+    size_t scratch_size = parameters->scratch_size;
+    boot_staging_package_t *out_package = parameters->out_package;
+    image_header_t *out_header = parameters->out_header;
+
     boot_staging_package_t package;
     bounded_reader_t reader;
     image_header_t header;
@@ -209,8 +238,8 @@ status_t boot_staging_package_validate(
     if (scratch == 0 || scratch_size == 0u) {
         return ERR_INVALID_ARG;
     }
-    status = boot_staging_package_load(
-        read_fn, read_context, metadata, &package);
+    status =
+        boot_staging_package_load(read_fn, read_context, metadata, &package);
     if (status != SYS_OK) {
         return status;
     }
@@ -222,28 +251,15 @@ status_t boot_staging_package_validate(
     if (status != SYS_OK) {
         return status;
     }
-    status = bounded_package_read(
-        &reader, 0u, (uint8_t *)&header, sizeof(header));
+    status = validate_staging_header(&reader, &package, &header);
     if (status != SYS_OK) {
         return status;
     }
-    status = image_header_validate_for_slot(&header, package.target_slot);
-    if (status != SYS_OK ||
-        image_header_get_state(&header) != IMAGE_STATE_CANDIDATE) {
-        return status != SYS_OK ? status : ERR_IMAGE_INVALID;
-    }
-    status = boot_staging_validate_min_bootloader_version(&header);
-    if (status != SYS_OK) {
-        return status;
-    }
-    status = image_header_validate_package_layout(
-        &header, package.package_size);
-    if (status != SYS_OK) {
-        return status;
-    }
-    status = image_verify_vector_table_at(
-        &header, package.target_slot, header.image_offset,
-        bounded_package_read, &reader);
+    status = image_verify_vector_table_at(&header,
+                                          package.target_slot,
+                                          header.image_offset,
+                                          bounded_package_read,
+                                          &reader);
     if (status != SYS_OK) {
         return status;
     }

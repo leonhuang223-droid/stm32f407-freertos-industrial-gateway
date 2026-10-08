@@ -54,12 +54,13 @@ status_t alarm_subsystem_construct(alarm_subsystem_t *subsystem,
                                    relay_t *relay,
                                    const gateway_runtime_config_t *config);
 status_t alarm_subsystem_start(alarm_subsystem_t *subsystem);
-status_t alarm_subsystem_reconfigure(
-    alarm_subsystem_t *subsystem,
-    const gateway_runtime_config_t *config);
-status_t alarm_subsystem_process(
-    alarm_subsystem_t *subsystem, const gateway_measurement_t *measurement,
-    gateway_alarm_event_t *events, size_t capacity, size_t *event_count);
+status_t alarm_subsystem_reconfigure(alarm_subsystem_t *subsystem,
+                                     const gateway_runtime_config_t *config);
+status_t alarm_subsystem_process(alarm_subsystem_t *subsystem,
+                                 const gateway_measurement_t *measurement,
+                                 gateway_alarm_event_t *events,
+                                 size_t capacity,
+                                 size_t *event_count);
 status_t alarm_subsystem_acknowledge(alarm_subsystem_t *subsystem,
                                      uint32_t event_id,
                                      gateway_alarm_event_t *event);

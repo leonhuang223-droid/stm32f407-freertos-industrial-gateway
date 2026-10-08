@@ -7,10 +7,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-enum {
-    MODBUS_RTU_MAX_REGISTERS = 16,
-    MODBUS_RTU_MAX_ADU_SIZE = 64
-};
+enum { MODBUS_RTU_MAX_REGISTERS = 16, MODBUS_RTU_MAX_ADU_SIZE = 64 };
 
 typedef enum {
     MODBUS_FUNCTION_READ_HOLDING = 0x03,
@@ -67,10 +64,13 @@ typedef struct {
 } modbus_master_t;
 
 uint16_t modbus_rtu_crc16(const uint8_t *data, size_t length);
-status_t modbus_master_construct(modbus_master_t *master, rs485_bus_t *bus,
+status_t modbus_master_construct(modbus_master_t *master,
+                                 rs485_bus_t *bus,
                                  const modbus_poll_entry_t *poll_table,
-                                 size_t poll_count, uint8_t retry_limit);
-status_t modbus_master_poll_next(modbus_master_t *master, uint32_t now_ms,
+                                 size_t poll_count,
+                                 uint8_t retry_limit);
+status_t modbus_master_poll_next(modbus_master_t *master,
+                                 uint32_t now_ms,
                                  gateway_measurement_t *measurement);
 
 #endif

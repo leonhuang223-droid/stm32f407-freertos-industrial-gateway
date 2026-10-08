@@ -16,9 +16,9 @@ typedef struct {
     uint32_t outer_enter_counter;
 } critical_timing_monitor_t;
 
-status_t critical_timing_monitor_enter(
-    critical_timing_monitor_t *monitor, uint32_t counter);
-status_t critical_timing_monitor_exit(
-    critical_timing_monitor_t *monitor, uint32_t counter);
+status_t critical_timing_monitor_enter(critical_timing_monitor_t *monitor,
+                                       uint32_t counter);
+status_t critical_timing_monitor_exit(critical_timing_monitor_t *monitor,
+                                      uint32_t counter);
 
 #endif

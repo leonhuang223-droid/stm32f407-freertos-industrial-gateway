@@ -15,7 +15,7 @@
 #define STORAGE_CONFIG_PAYLOAD_OFFSET 16u
 #define STORAGE_CONFIG_PAYLOAD_CAPACITY 236u
 #define STORAGE_FAULT_PAYLOAD_SIZE 76u
-#define STORAGE_SLOTS_PER_SECTOR \
+#define STORAGE_SLOTS_PER_SECTOR                                               \
     (EXTERNAL_FLASH_SECTOR_SIZE / STORAGE_RECORD_SIZE)
 
 enum {
@@ -90,10 +90,8 @@ static uint16_t read_u16(const uint8_t *buffer)
 
 static uint32_t read_u32(const uint8_t *buffer)
 {
-    return (uint32_t)buffer[0] |
-           ((uint32_t)buffer[1] << 8u) |
-           ((uint32_t)buffer[2] << 16u) |
-           ((uint32_t)buffer[3] << 24u);
+    return (uint32_t)buffer[0] | ((uint32_t)buffer[1] << 8u) |
+           ((uint32_t)buffer[2] << 16u) | ((uint32_t)buffer[3] << 24u);
 }
 
 static int generation_newer(uint32_t candidate, uint32_t current)
@@ -135,12 +133,33 @@ static status_t finalize_wire(uint8_t *wire, size_t crc_offset)
     return status;
 }
 
-static status_t encode_record(uint8_t kind, uint8_t flags,
-                              uint32_t generation, uint32_t sequence,
-                              uint64_t timestamp, const uint8_t *payload,
-                              size_t payload_length,
-                              uint8_t wire[STORAGE_RECORD_SIZE])
+/** Synchronous request; pointed-to buffers remain caller-owned.
+ * @author 兆鸣嵌入式
+ */
+typedef struct {
+    uint8_t flags;
+    uint32_t generation;
+    uint32_t sequence;
+    uint64_t timestamp;
+    const uint8_t *payload;
+    size_t payload_length;
+    uint8_t *wire;
+} storage_record_input_t;
+
+static status_t encode_record(uint8_t kind,
+                              const storage_record_input_t *parameters)
 {
+    if (parameters == 0) {
+        return ERR_INVALID_ARG;
+    }
+    uint8_t flags = parameters->flags;
+    uint32_t generation = parameters->generation;
+    uint32_t sequence = parameters->sequence;
+    uint64_t timestamp = parameters->timestamp;
+    const uint8_t *payload = parameters->payload;
+    size_t payload_length = parameters->payload_length;
+    uint8_t *wire = parameters->wire;
+
     if (wire == 0 || payload_length > STORAGE_RECORD_PAYLOAD_CAPACITY ||
         (payload == 0 && payload_length != 0u)) {
         return ERR_INVALID_ARG;
@@ -156,8 +175,7 @@ static status_t encode_record(uint8_t kind, uint8_t flags,
     write_u16(&wire[24], (uint16_t)payload_length);
     write_u16(&wire[26], 0u);
     if (payload_length != 0u) {
-        memcpy(&wire[STORAGE_RECORD_PAYLOAD_OFFSET], payload,
-               payload_length);
+        memcpy(&wire[STORAGE_RECORD_PAYLOAD_OFFSET], payload, payload_length);
     }
     return finalize_wire(wire, STORAGE_RECORD_CRC_OFFSET);
 }
@@ -174,9 +192,9 @@ static status_t record_status(const uint8_t wire[STORAGE_RECORD_SIZE],
     return wire_crc_status(wire, STORAGE_RECORD_CRC_OFFSET);
 }
 
-static status_t encode_fault_payload(
-    const fault_record_t *record,
-    uint8_t payload[STORAGE_FAULT_PAYLOAD_SIZE])
+static status_t
+encode_fault_payload(const fault_record_t *record,
+                     uint8_t payload[STORAGE_FAULT_PAYLOAD_SIZE])
 {
     if (fault_record_validate(record) != SYS_OK) {
         return ERR_METADATA_INVALID;
@@ -205,11 +223,11 @@ static status_t encode_fault_payload(
     return SYS_OK;
 }
 
-static status_t decode_fault_payload(const uint8_t *payload, size_t length,
+static status_t decode_fault_payload(const uint8_t *payload,
+                                     size_t length,
                                      fault_record_t *record)
 {
-    if (payload == 0 || record == 0 ||
-        length != STORAGE_FAULT_PAYLOAD_SIZE) {
+    if (payload == 0 || record == 0 || length != STORAGE_FAULT_PAYLOAD_SIZE) {
         return ERR_PROTOCOL;
     }
     memset(record, 0, sizeof(*record));
@@ -238,7 +256,8 @@ static status_t decode_fault_payload(const uint8_t *payload, size_t length,
 }
 
 static status_t program_verified(storage_subsystem_t *subsystem,
-                                 uint32_t address, const uint8_t *data,
+                                 uint32_t address,
+                                 const uint8_t *data,
                                  size_t length)
 {
     uint8_t verify[STORAGE_CONFIG_WIRE_SIZE];
@@ -260,8 +279,7 @@ static status_t program_verified(storage_subsystem_t *subsystem,
     return SYS_OK;
 }
 
-static status_t erase_sector(storage_subsystem_t *subsystem,
-                             uint32_t address)
+static status_t erase_sector(storage_subsystem_t *subsystem, uint32_t address)
 {
     status_t status = storage_media_erase_sector(subsystem->media, address);
 
@@ -280,15 +298,22 @@ static status_t write_region_header(storage_subsystem_t *subsystem,
 {
     uint8_t payload[1];
     uint8_t wire[STORAGE_RECORD_SIZE];
-    uint32_t address = region->partition.start +
-        sector_index * EXTERNAL_FLASH_SECTOR_SIZE;
+    uint32_t address =
+        region->partition.start + sector_index * EXTERNAL_FLASH_SECTOR_SIZE;
     status_t status;
 
     payload[0] = region->region_id;
-    status = encode_record(STORAGE_WIRE_REGION_HEADER, region->region_id,
-                           generation, 0u, 0u, payload, sizeof(payload), wire);
+    status = encode_record(STORAGE_WIRE_REGION_HEADER,
+                           &(const storage_record_input_t){region->region_id,
+                                                           generation,
+                                                           0u,
+                                                           0u,
+                                                           payload,
+                                                           sizeof(payload),
+                                                           wire});
     return status == SYS_OK
-        ? program_verified(subsystem, address, wire, sizeof(wire)) : status;
+               ? program_verified(subsystem, address, wire, sizeof(wire))
+               : status;
 }
 
 static status_t format_region(storage_subsystem_t *subsystem,
@@ -310,8 +335,7 @@ static status_t format_region(storage_subsystem_t *subsystem,
 static status_t mount_region(storage_subsystem_t *subsystem,
                              storage_region_cursor_t *region)
 {
-    uint32_t sector_count = region->partition.size /
-                            EXTERNAL_FLASH_SECTOR_SIZE;
+    uint32_t sector_count = region->partition.size / EXTERNAL_FLASH_SECTOR_SIZE;
     uint32_t selected_sector = 0u;
     uint32_t selected_generation = 0u;
     uint32_t sector;
@@ -319,10 +343,10 @@ static status_t mount_region(storage_subsystem_t *subsystem,
 
     for (sector = 0u; sector < sector_count; ++sector) {
         uint8_t wire[STORAGE_RECORD_SIZE];
-        uint32_t address = region->partition.start +
-            sector * EXTERNAL_FLASH_SECTOR_SIZE;
-        status_t status = storage_media_read(subsystem->media, address,
-                                             wire, sizeof(wire));
+        uint32_t address =
+            region->partition.start + sector * EXTERNAL_FLASH_SECTOR_SIZE;
+        status_t status =
+            storage_media_read(subsystem->media, address, wire, sizeof(wire));
 
         if (status != SYS_OK) {
             return status;
@@ -336,8 +360,8 @@ static status_t mount_region(storage_subsystem_t *subsystem,
             subsystem->health.mount_invalid_records++;
             continue;
         }
-        if (!found || generation_newer(read_u32(&wire[8]),
-                                       selected_generation)) {
+        if (!found ||
+            generation_newer(read_u32(&wire[8]), selected_generation)) {
             selected_sector = sector;
             selected_generation = read_u32(&wire[8]);
             found = 1;
@@ -352,10 +376,10 @@ static status_t mount_region(storage_subsystem_t *subsystem,
     while (region->next_slot < STORAGE_SLOTS_PER_SECTOR) {
         uint8_t wire[STORAGE_RECORD_SIZE];
         uint32_t address = region->partition.start +
-            selected_sector * EXTERNAL_FLASH_SECTOR_SIZE +
-            (uint32_t)region->next_slot * STORAGE_RECORD_SIZE;
-        status_t status = storage_media_read(subsystem->media, address,
-                                             wire, sizeof(wire));
+                           selected_sector * EXTERNAL_FLASH_SECTOR_SIZE +
+                           (uint32_t)region->next_slot * STORAGE_RECORD_SIZE;
+        status_t status =
+            storage_media_read(subsystem->media, address, wire, sizeof(wire));
 
         if (status != SYS_OK) {
             return status;
@@ -373,8 +397,8 @@ static status_t mount_region(storage_subsystem_t *subsystem,
 
 static status_t scan_latest_fault(storage_subsystem_t *subsystem)
 {
-    uint32_t sector_count = subsystem->crash_log.partition.size /
-                            EXTERNAL_FLASH_SECTOR_SIZE;
+    uint32_t sector_count =
+        subsystem->crash_log.partition.size / EXTERNAL_FLASH_SECTOR_SIZE;
     uint32_t latest_generation = 0u;
     uint16_t latest_slot = 0u;
     uint32_t sector;
@@ -386,12 +410,11 @@ static status_t scan_latest_fault(storage_subsystem_t *subsystem)
     for (sector = 0u; sector < sector_count; ++sector) {
         uint8_t header[STORAGE_RECORD_SIZE];
         uint32_t sector_address = subsystem->crash_log.partition.start +
-            sector * EXTERNAL_FLASH_SECTOR_SIZE;
+                                  sector * EXTERNAL_FLASH_SECTOR_SIZE;
         uint32_t generation;
         uint16_t slot;
-        status_t status = storage_media_read(subsystem->media,
-                                             sector_address, header,
-                                             sizeof(header));
+        status_t status = storage_media_read(
+            subsystem->media, sector_address, header, sizeof(header));
 
         if (status != SYS_OK) {
             return status;
@@ -408,11 +431,11 @@ static status_t scan_latest_fault(storage_subsystem_t *subsystem)
         for (slot = 1u; slot < STORAGE_SLOTS_PER_SECTOR; ++slot) {
             uint8_t wire[STORAGE_RECORD_SIZE];
             fault_record_t record;
-            uint32_t address = sector_address +
-                (uint32_t)slot * STORAGE_RECORD_SIZE;
+            uint32_t address =
+                sector_address + (uint32_t)slot * STORAGE_RECORD_SIZE;
 
-            status = storage_media_read(subsystem->media, address, wire,
-                                        sizeof(wire));
+            status = storage_media_read(
+                subsystem->media, address, wire, sizeof(wire));
             if (status != SYS_OK) {
                 return status;
             }
@@ -422,7 +445,8 @@ static status_t scan_latest_fault(storage_subsystem_t *subsystem)
             if (record_status(wire, STORAGE_WIRE_CRASH) != SYS_OK ||
                 read_u32(&wire[8]) != generation ||
                 decode_fault_payload(&wire[STORAGE_RECORD_PAYLOAD_OFFSET],
-                                     read_u16(&wire[24]), &record) != SYS_OK) {
+                                     read_u16(&wire[24]),
+                                     &record) != SYS_OK) {
                 subsystem->health.mount_invalid_records++;
                 continue;
             }
@@ -446,17 +470,16 @@ static status_t scan_latest_fault(storage_subsystem_t *subsystem)
 static status_t rotate_region(storage_subsystem_t *subsystem,
                               storage_region_cursor_t *region)
 {
-    uint32_t sector_count = region->partition.size /
-                            EXTERNAL_FLASH_SECTOR_SIZE;
+    uint32_t sector_count = region->partition.size / EXTERNAL_FLASH_SECTOR_SIZE;
     uint32_t next_sector = (region->active_sector + 1u) % sector_count;
     uint32_t next_generation = region->generation + 1u;
-    uint32_t address = region->partition.start +
-        next_sector * EXTERNAL_FLASH_SECTOR_SIZE;
+    uint32_t address =
+        region->partition.start + next_sector * EXTERNAL_FLASH_SECTOR_SIZE;
     status_t status = erase_sector(subsystem, address);
 
     if (status == SYS_OK) {
-        status = write_region_header(subsystem, region, next_sector,
-                                     next_generation);
+        status = write_region_header(
+            subsystem, region, next_sector, next_generation);
     }
     if (status == SYS_OK) {
         region->active_sector = next_sector;
@@ -485,15 +508,16 @@ static status_t append_record(storage_subsystem_t *subsystem,
         }
     }
     address = region->partition.start +
-        region->active_sector * EXTERNAL_FLASH_SECTOR_SIZE +
-        (uint32_t)region->next_slot * STORAGE_RECORD_SIZE;
+              region->active_sector * EXTERNAL_FLASH_SECTOR_SIZE +
+              (uint32_t)region->next_slot * STORAGE_RECORD_SIZE;
     status = program_verified(subsystem, address, wire, STORAGE_RECORD_SIZE);
     region->next_slot++;
     return status;
 }
 
-static size_t encode_measurement_payload(
-    const gateway_measurement_t *measurement, uint8_t *payload)
+static size_t
+encode_measurement_payload(const gateway_measurement_t *measurement,
+                           uint8_t *payload)
 {
     write_u16(&payload[0], measurement->point_id);
     payload[2] = measurement->source;
@@ -552,7 +576,8 @@ static size_t encode_config_payload(const gateway_runtime_config_t *config,
     return 12u + (size_t)config->rule_count * 20u;
 }
 
-static status_t decode_config_payload(const uint8_t *payload, size_t length,
+static status_t decode_config_payload(const uint8_t *payload,
+                                      size_t length,
                                       gateway_runtime_config_t *config)
 {
     uint8_t rule_count;
@@ -603,8 +628,8 @@ static status_t encode_config_wire(const gateway_runtime_config_t *config,
     write_u16(&wire[4], STORAGE_CONFIG_VERSION);
     write_u16(&wire[6], 0u);
     write_u32(&wire[8], generation);
-    payload_length = encode_config_payload(
-        config, &wire[STORAGE_CONFIG_PAYLOAD_OFFSET]);
+    payload_length =
+        encode_config_payload(config, &wire[STORAGE_CONFIG_PAYLOAD_OFFSET]);
     if (payload_length > STORAGE_CONFIG_PAYLOAD_CAPACITY) {
         return ERR_NO_MEMORY;
     }
@@ -613,9 +638,9 @@ static status_t encode_config_wire(const gateway_runtime_config_t *config,
     return finalize_wire(wire, STORAGE_CONFIG_CRC_OFFSET);
 }
 
-static status_t decode_config_wire(
-    const uint8_t wire[STORAGE_CONFIG_WIRE_SIZE], uint32_t *generation,
-    gateway_runtime_config_t *config)
+static status_t decode_config_wire(const uint8_t wire[STORAGE_CONFIG_WIRE_SIZE],
+                                   uint32_t *generation,
+                                   gateway_runtime_config_t *config)
 {
     size_t payload_length;
     status_t status;
@@ -652,16 +677,15 @@ static status_t commit_config(storage_subsystem_t *subsystem,
     if (subsystem->health.active_config_copy > 1u) {
         target_copy = 0u;
     }
-    target = external_flash_partition_get(target_copy == 0u
-        ? EXTERNAL_FLASH_PARTITION_CONFIG_A
-        : EXTERNAL_FLASH_PARTITION_CONFIG_B);
+    target = external_flash_partition_get(
+        target_copy == 0u ? EXTERNAL_FLASH_PARTITION_CONFIG_A
+                          : EXTERNAL_FLASH_PARTITION_CONFIG_B);
     status = encode_config_wire(config, generation, wire);
     if (status == SYS_OK) {
         status = erase_sector(subsystem, target->start);
     }
     if (status == SYS_OK) {
-        status = program_verified(subsystem, target->start, wire,
-                                  sizeof(wire));
+        status = program_verified(subsystem, target->start, wire, sizeof(wire));
     }
     if (status == SYS_OK) {
         subsystem->loaded_config = *config;
@@ -675,19 +699,18 @@ static status_t commit_config(storage_subsystem_t *subsystem,
 static status_t mount_config(storage_subsystem_t *subsystem)
 {
     gateway_runtime_config_t configs[2];
-    uint32_t generations[2] = { 0u, 0u };
-    int valid[2] = { 0, 0 };
+    uint32_t generations[2] = {0u, 0u};
+    int valid[2] = {0, 0};
     unsigned int i;
 
     for (i = 0u; i < 2u; ++i) {
         const external_flash_partition_t *partition =
-            external_flash_partition_get(i == 0u
-                ? EXTERNAL_FLASH_PARTITION_CONFIG_A
-                : EXTERNAL_FLASH_PARTITION_CONFIG_B);
+            external_flash_partition_get(
+                i == 0u ? EXTERNAL_FLASH_PARTITION_CONFIG_A
+                        : EXTERNAL_FLASH_PARTITION_CONFIG_B);
         uint8_t wire[STORAGE_CONFIG_WIRE_SIZE];
-        status_t status = storage_media_read(subsystem->media,
-                                             partition->start, wire,
-                                             sizeof(wire));
+        status_t status = storage_media_read(
+            subsystem->media, partition->start, wire, sizeof(wire));
 
         if (status != SYS_OK) {
             return status;
@@ -705,23 +728,24 @@ static status_t mount_config(storage_subsystem_t *subsystem)
         subsystem->health.active_config_generation = 0u;
         return commit_config(subsystem, &subsystem->default_config);
     }
-    i = valid[1] && (!valid[0] || generation_newer(generations[1],
-                                                   generations[0]))
-        ? 1u : 0u;
+    i = valid[1] &&
+                (!valid[0] || generation_newer(generations[1], generations[0]))
+            ? 1u
+            : 0u;
     subsystem->loaded_config = configs[i];
     subsystem->health.active_config_copy = (uint8_t)i;
     subsystem->health.active_config_generation = generations[i];
     return SYS_OK;
 }
 
-status_t storage_subsystem_construct(
-    storage_subsystem_t *subsystem, storage_media_t *media,
-    const gateway_runtime_config_t *default_config)
+status_t
+storage_subsystem_construct(storage_subsystem_t *subsystem,
+                            storage_media_t *media,
+                            const gateway_runtime_config_t *default_config)
 {
     const external_flash_partition_t *partition;
 
-    if (subsystem == 0 || media == 0 ||
-        !runtime_config_valid(default_config) ||
+    if (subsystem == 0 || media == 0 || !runtime_config_valid(default_config) ||
         external_flash_layout_validate() != SYS_OK ||
         media->total_size < EXTERNAL_FLASH_TOTAL_SIZE ||
         media->page_size != EXTERNAL_FLASH_PAGE_SIZE ||
@@ -734,12 +758,12 @@ status_t storage_subsystem_construct(
     subsystem->health.active_config_copy = 0xffu;
     subsystem->health.last_error = ERR_DEVICE_NOT_READY;
 
-    partition = external_flash_partition_get(
-        EXTERNAL_FLASH_PARTITION_RUNTIME_LOG);
+    partition =
+        external_flash_partition_get(EXTERNAL_FLASH_PARTITION_RUNTIME_LOG);
     subsystem->runtime_log.partition = *partition;
     subsystem->runtime_log.region_id = STORAGE_REGION_RUNTIME_LOG;
-    partition = external_flash_partition_get(
-        EXTERNAL_FLASH_PARTITION_ALARM_LOG);
+    partition =
+        external_flash_partition_get(EXTERNAL_FLASH_PARTITION_ALARM_LOG);
     subsystem->alarm_log.partition = *partition;
     subsystem->alarm_log.region_id = STORAGE_REGION_ALARM_LOG;
     partition = external_flash_partition_get(EXTERNAL_FLASH_PARTITION_CRASH);
@@ -782,26 +806,28 @@ status_t storage_subsystem_start(storage_subsystem_t *subsystem)
     return status;
 }
 
-status_t storage_subsystem_append_log(
-    storage_subsystem_t *subsystem,
-    const gateway_storage_log_request_t *request)
+status_t
+storage_subsystem_append_log(storage_subsystem_t *subsystem,
+                             const gateway_storage_log_request_t *request)
 {
     uint8_t payload[STORAGE_RECORD_PAYLOAD_CAPACITY];
     uint8_t wire[STORAGE_RECORD_SIZE];
     size_t payload_length;
     status_t status;
 
-    if (subsystem == 0 || request == 0 ||
-        subsystem->health.mounted == 0u) {
+    if (subsystem == 0 || request == 0 || subsystem->health.mounted == 0u) {
         return ERR_DEVICE_NOT_READY;
     }
-    payload_length = encode_measurement_payload(&request->measurement,
-                                                payload);
-    status = encode_record(STORAGE_WIRE_LOG, 0u,
-                           subsystem->runtime_log.generation,
-                           request->sequence,
-                           request->measurement.wall_time_ms,
-                           payload, payload_length, wire);
+    payload_length = encode_measurement_payload(&request->measurement, payload);
+    status = encode_record(
+        STORAGE_WIRE_LOG,
+        &(const storage_record_input_t){0u,
+                                        subsystem->runtime_log.generation,
+                                        request->sequence,
+                                        request->measurement.wall_time_ms,
+                                        payload,
+                                        payload_length,
+                                        wire});
     if (status == SYS_OK) {
         status = append_record(subsystem, &subsystem->runtime_log, wire);
     }
@@ -812,26 +838,29 @@ status_t storage_subsystem_append_log(
     return status;
 }
 
-status_t storage_subsystem_append_alarm(
-    storage_subsystem_t *subsystem,
-    const gateway_storage_alarm_request_t *request)
+status_t
+storage_subsystem_append_alarm(storage_subsystem_t *subsystem,
+                               const gateway_storage_alarm_request_t *request)
 {
     uint8_t payload[STORAGE_RECORD_PAYLOAD_CAPACITY];
     uint8_t wire[STORAGE_RECORD_SIZE];
     size_t payload_length;
     status_t status;
 
-    if (subsystem == 0 || request == 0 ||
-        subsystem->health.mounted == 0u || request->event.event_id == 0u) {
+    if (subsystem == 0 || request == 0 || subsystem->health.mounted == 0u ||
+        request->event.event_id == 0u) {
         return ERR_DEVICE_NOT_READY;
     }
     payload_length = encode_alarm_payload(&request->event, payload);
-    status = encode_record(STORAGE_WIRE_ALARM,
-                           (uint8_t)request->event.transition,
-                           subsystem->alarm_log.generation,
-                           request->event.event_id,
-                           request->event.wall_time_ms,
-                           payload, payload_length, wire);
+    status = encode_record(
+        STORAGE_WIRE_ALARM,
+        &(const storage_record_input_t){(uint8_t)request->event.transition,
+                                        subsystem->alarm_log.generation,
+                                        request->event.event_id,
+                                        request->event.wall_time_ms,
+                                        payload,
+                                        payload_length,
+                                        wire});
     if (status == SYS_OK) {
         status = append_record(subsystem, &subsystem->alarm_log, wire);
     }
@@ -842,15 +871,14 @@ status_t storage_subsystem_append_alarm(
     return status;
 }
 
-status_t storage_subsystem_archive_fault(
-    storage_subsystem_t *subsystem, const fault_record_t *record)
+status_t storage_subsystem_archive_fault(storage_subsystem_t *subsystem,
+                                         const fault_record_t *record)
 {
     uint8_t payload[STORAGE_FAULT_PAYLOAD_SIZE];
     uint8_t wire[STORAGE_RECORD_SIZE];
     status_t status;
 
-    if (subsystem == 0 || record == 0 ||
-        subsystem->health.mounted == 0u) {
+    if (subsystem == 0 || record == 0 || subsystem->health.mounted == 0u) {
         return ERR_DEVICE_NOT_READY;
     }
     status = fault_record_validate(record);
@@ -866,10 +894,15 @@ status_t storage_subsystem_archive_fault(
     }
     status = encode_fault_payload(record, payload);
     if (status == SYS_OK) {
-        status = encode_record(STORAGE_WIRE_CRASH, record->origin,
-                               subsystem->crash_log.generation,
-                               record->sequence, 0u, payload,
-                               sizeof(payload), wire);
+        status = encode_record(
+            STORAGE_WIRE_CRASH,
+            &(const storage_record_input_t){record->origin,
+                                            subsystem->crash_log.generation,
+                                            record->sequence,
+                                            0u,
+                                            payload,
+                                            sizeof(payload),
+                                            wire});
     }
     if (status == SYS_OK) {
         status = append_record(subsystem, &subsystem->crash_log, wire);
@@ -884,11 +917,11 @@ status_t storage_subsystem_archive_fault(
     return status;
 }
 
-status_t storage_subsystem_load_latest_fault(
-    const storage_subsystem_t *subsystem, fault_record_t *record)
+status_t
+storage_subsystem_load_latest_fault(const storage_subsystem_t *subsystem,
+                                    fault_record_t *record)
 {
-    if (subsystem == 0 || record == 0 ||
-        subsystem->health.mounted == 0u) {
+    if (subsystem == 0 || record == 0 || subsystem->health.mounted == 0u) {
         return ERR_DEVICE_NOT_READY;
     }
     if (subsystem->health.latest_crash_valid == 0u) {
@@ -898,9 +931,9 @@ status_t storage_subsystem_load_latest_fault(
     return fault_record_validate(record);
 }
 
-status_t storage_subsystem_save_config(
-    storage_subsystem_t *subsystem,
-    const gateway_storage_config_request_t *request)
+status_t
+storage_subsystem_save_config(storage_subsystem_t *subsystem,
+                              const gateway_storage_config_request_t *request)
 {
     status_t status;
 
@@ -918,12 +951,10 @@ status_t storage_subsystem_save_config(
     return status;
 }
 
-status_t storage_subsystem_load_config(
-    const storage_subsystem_t *subsystem,
-    gateway_runtime_config_t *config)
+status_t storage_subsystem_load_config(const storage_subsystem_t *subsystem,
+                                       gateway_runtime_config_t *config)
 {
-    if (subsystem == 0 || config == 0 ||
-        subsystem->health.mounted == 0u) {
+    if (subsystem == 0 || config == 0 || subsystem->health.mounted == 0u) {
         return ERR_DEVICE_NOT_READY;
     }
     *config = subsystem->loaded_config;

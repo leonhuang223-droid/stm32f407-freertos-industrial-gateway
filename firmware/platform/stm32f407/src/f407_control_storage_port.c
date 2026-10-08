@@ -19,18 +19,20 @@ typedef struct {
     uint16_t pin;
 } f407_relay_port_t;
 
-static f407_storage_spi_port_t storage_spi_port = { &hspi1 };
-static f407_relay_port_t relay_port = {
-    RELAY_DO_GPIO_Port, RELAY_DO_Pin
-};
+static f407_storage_spi_port_t storage_spi_port = {&hspi1};
+static f407_relay_port_t relay_port = {RELAY_DO_GPIO_Port, RELAY_DO_Pin};
 
 static status_t status_from_hal(HAL_StatusTypeDef status)
 {
     switch (status) {
-    case HAL_OK: return SYS_OK;
-    case HAL_TIMEOUT: return ERR_TIMEOUT;
-    case HAL_BUSY: return ERR_DEVICE_NOT_READY;
-    default: return ERR_IO;
+    case HAL_OK:
+        return SYS_OK;
+    case HAL_TIMEOUT:
+        return ERR_TIMEOUT;
+    case HAL_BUSY:
+        return ERR_DEVICE_NOT_READY;
+    default:
+        return ERR_IO;
     }
 }
 
@@ -41,13 +43,16 @@ static status_t storage_spi_select(void *context, int active)
     if (port == 0) {
         return ERR_INVALID_ARG;
     }
-    HAL_GPIO_WritePin(W25Q128_CS_GPIO_Port, W25Q128_CS_Pin,
+    HAL_GPIO_WritePin(W25Q128_CS_GPIO_Port,
+                      W25Q128_CS_Pin,
                       active != 0 ? GPIO_PIN_RESET : GPIO_PIN_SET);
     return SYS_OK;
 }
 
-static status_t storage_spi_transfer(void *context, const uint8_t *tx,
-                                     uint8_t *rx, size_t length)
+static status_t storage_spi_transfer(void *context,
+                                     const uint8_t *tx,
+                                     uint8_t *rx,
+                                     size_t length)
 {
     f407_storage_spi_port_t *port = context;
     HAL_StatusTypeDef status;
@@ -56,13 +61,16 @@ static status_t storage_spi_transfer(void *context, const uint8_t *tx,
         return ERR_INVALID_ARG;
     }
     if (rx != 0) {
-        status = HAL_SPI_TransmitReceive(
-            port->handle, (uint8_t *)(uintptr_t)tx, rx,
-            (uint16_t)length, F407_W25Q128_SPI_TIMEOUT_MS);
+        status = HAL_SPI_TransmitReceive(port->handle,
+                                         (uint8_t *)(uintptr_t)tx,
+                                         rx,
+                                         (uint16_t)length,
+                                         F407_W25Q128_SPI_TIMEOUT_MS);
     } else {
-        status = HAL_SPI_Transmit(
-            port->handle, (uint8_t *)(uintptr_t)tx,
-            (uint16_t)length, F407_W25Q128_SPI_TIMEOUT_MS);
+        status = HAL_SPI_Transmit(port->handle,
+                                  (uint8_t *)(uintptr_t)tx,
+                                  (uint16_t)length,
+                                  F407_W25Q128_SPI_TIMEOUT_MS);
     }
     return status_from_hal(status);
 }
@@ -80,13 +88,14 @@ static void storage_delay(void *context, uint32_t delay_ms)
 static status_t relay_port_init(void *context, int inactive_level)
 {
     f407_relay_port_t *port = context;
-    GPIO_InitTypeDef gpio = { 0 };
+    GPIO_InitTypeDef gpio = {0};
 
     if (port == 0) {
         return ERR_INVALID_ARG;
     }
     __HAL_RCC_GPIOG_CLK_ENABLE();
-    HAL_GPIO_WritePin(port->port, port->pin,
+    HAL_GPIO_WritePin(port->port,
+                      port->pin,
                       inactive_level != 0 ? GPIO_PIN_SET : GPIO_PIN_RESET);
     gpio.Pin = port->pin;
     gpio.Mode = GPIO_MODE_OUTPUT_PP;
@@ -103,7 +112,8 @@ static status_t relay_port_write(void *context, int physical_level)
     if (port == 0) {
         return ERR_INVALID_ARG;
     }
-    HAL_GPIO_WritePin(port->port, port->pin,
+    HAL_GPIO_WritePin(port->port,
+                      port->pin,
                       physical_level != 0 ? GPIO_PIN_SET : GPIO_PIN_RESET);
     return SYS_OK;
 }
@@ -115,8 +125,8 @@ static status_t relay_port_read(void *context, int *physical_level)
     if (port == 0 || physical_level == 0) {
         return ERR_INVALID_ARG;
     }
-    *physical_level = HAL_GPIO_ReadPin(port->port, port->pin) == GPIO_PIN_SET
-        ? 1 : 0;
+    *physical_level =
+        HAL_GPIO_ReadPin(port->port, port->pin) == GPIO_PIN_SET ? 1 : 0;
     return SYS_OK;
 }
 
@@ -185,12 +195,12 @@ static gateway_runtime_config_t default_runtime_config(void)
 status_t f407_control_storage_configure(app_context_t *context)
 {
     static const spi_device_ops_t spi_ops = {
-        storage_spi_select, storage_spi_transfer, storage_delay
-    };
-    static const relay_ops_t relay_ops = {
-        relay_port_init, relay_port_write, relay_port_read,
-        relay_port_suspend, relay_port_resume
-    };
+        storage_spi_select, storage_spi_transfer, storage_delay};
+    static const relay_ops_t relay_ops = {relay_port_init,
+                                          relay_port_write,
+                                          relay_port_read,
+                                          relay_port_suspend,
+                                          relay_port_resume};
     app_control_storage_config_t config;
 
     if (context == 0) {

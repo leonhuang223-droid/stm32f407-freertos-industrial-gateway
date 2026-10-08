@@ -3,23 +3,21 @@
 #include <limits.h>
 #include <string.h>
 
-static const power_mode_t lock_limits[PM_LOCK_COUNT] = {
-    POWER_TICKLESS_SLEEP,
-    POWER_ACTIVE,
-    POWER_TICKLESS_SLEEP,
-    POWER_TICKLESS_SLEEP,
-    POWER_TICKLESS_SLEEP,
-    POWER_ACTIVE,
-    POWER_ACTIVE
-};
+static const power_mode_t lock_limits[PM_LOCK_COUNT] = {POWER_TICKLESS_SLEEP,
+                                                        POWER_ACTIVE,
+                                                        POWER_TICKLESS_SLEEP,
+                                                        POWER_TICKLESS_SLEEP,
+                                                        POWER_TICKLESS_SLEEP,
+                                                        POWER_ACTIVE,
+                                                        POWER_ACTIVE};
 
 static int manager_ready(const power_manager_t *manager)
 {
     return manager != 0 && manager->initialized != 0u;
 }
 
-static void transition_mode(power_manager_t *manager, power_mode_t mode,
-                            uint32_t now_ms)
+static void
+transition_mode(power_manager_t *manager, power_mode_t mode, uint32_t now_ms)
 {
     uint32_t elapsed = now_ms - manager->last_evaluation_ms;
 
@@ -35,8 +33,7 @@ status_t power_manager_construct(power_manager_t *manager,
                                  const power_manager_config_t *config,
                                  uint32_t now_ms)
 {
-    if (manager == 0 || config == 0 ||
-        config->minimum_tickless_ms == 0u ||
+    if (manager == 0 || config == 0 || config->minimum_tickless_ms == 0u ||
         config->watchdog_margin_ms == 0u ||
         config->lock_leak_timeout_ms == 0u ||
         (config->persistent_lock_mask >> PM_LOCK_COUNT) != 0u) {
@@ -54,7 +51,8 @@ status_t power_manager_construct(power_manager_t *manager,
 }
 
 status_t power_manager_acquire(power_manager_t *manager,
-                               power_lock_id_t lock, uint32_t now_ms)
+                               power_lock_id_t lock,
+                               uint32_t now_ms)
 {
     uint16_t *count;
 
@@ -80,7 +78,8 @@ status_t power_manager_acquire(power_manager_t *manager,
 }
 
 status_t power_manager_release(power_manager_t *manager,
-                               power_lock_id_t lock, uint32_t now_ms)
+                               power_lock_id_t lock,
+                               uint32_t now_ms)
 {
     uint16_t *count;
     uint32_t held_ms;
@@ -126,7 +125,8 @@ power_mode_t power_manager_deepest_allowed(const power_manager_t *manager)
 }
 
 status_t power_manager_set_policy(power_manager_t *manager,
-                                  power_policy_t policy, uint32_t now_ms)
+                                  power_policy_t policy,
+                                  uint32_t now_ms)
 {
     if (!manager_ready(manager) ||
         (unsigned int)policy > POWER_POLICY_FORCE_ECO) {
@@ -234,8 +234,7 @@ void power_manager_record_wake(power_manager_t *manager,
     }
     manager->stats.sleep_entries++;
     manager->stats.cumulative_sleep_budget_ms += planned_sleep_ms;
-    manager->stats.mode_residency_ms[POWER_TICKLESS_SLEEP] +=
-        planned_sleep_ms;
+    manager->stats.mode_residency_ms[POWER_TICKLESS_SLEEP] += planned_sleep_ms;
     manager->stats.wake_count[(unsigned int)reason]++;
     if (planned_sleep_ms > manager->stats.longest_sleep_budget_ms) {
         manager->stats.longest_sleep_budget_ms = planned_sleep_ms;

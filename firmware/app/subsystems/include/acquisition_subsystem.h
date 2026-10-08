@@ -39,20 +39,22 @@ typedef struct {
     uint8_t suspended;
 } acquisition_subsystem_t;
 
-status_t acquisition_subsystem_construct(acquisition_subsystem_t *subsystem,
-                                         ads1115_t *ads1115,
-                                         max31865_t *max31865,
-                                         sht30_t *sht30,
-                                         const acquisition_schedule_t *schedule);
+status_t
+acquisition_subsystem_construct(acquisition_subsystem_t *subsystem,
+                                ads1115_t *ads1115,
+                                max31865_t *max31865,
+                                sht30_t *sht30,
+                                const acquisition_schedule_t *schedule);
 status_t acquisition_subsystem_start(acquisition_subsystem_t *subsystem);
-status_t acquisition_subsystem_process(
-    acquisition_subsystem_t *subsystem, uint32_t now_ms,
-    gateway_measurement_t *out_measurements, size_t capacity,
-    size_t *out_count);
+status_t acquisition_subsystem_process(acquisition_subsystem_t *subsystem,
+                                       uint32_t now_ms,
+                                       gateway_measurement_t *out_measurements,
+                                       size_t capacity,
+                                       size_t *out_count);
 status_t acquisition_subsystem_suspend(acquisition_subsystem_t *subsystem);
 status_t acquisition_subsystem_resume(acquisition_subsystem_t *subsystem);
-status_t acquisition_subsystem_get_health(
-    const acquisition_subsystem_t *subsystem,
-    acquisition_health_t *out_health);
+status_t
+acquisition_subsystem_get_health(const acquisition_subsystem_t *subsystem,
+                                 acquisition_health_t *out_health);
 
 #endif

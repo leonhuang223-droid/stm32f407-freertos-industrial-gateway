@@ -1,5 +1,6 @@
 #include "can.h"
 #include "main.h"
+#include "stm32f4xx_it.h"
 #include "usart.h"
 
 #if defined(FIRMWARE_USE_FREERTOS)
@@ -25,50 +26,46 @@ void NMI_Handler(void)
 #if defined(FIRMWARE_USE_FREERTOS)
 __attribute__((naked)) void HardFault_Handler(void)
 {
-    __asm volatile (
-        "tst lr, #4\n"
-        "ite eq\n"
-        "mrseq r0, msp\n"
-        "mrsne r0, psp\n"
-        "mov r1, lr\n"
-        "movs r2, #1\n"
-        "b f407_fault_capture_exception\n");
+    __asm volatile("tst lr, #4\n"
+                   "ite eq\n"
+                   "mrseq r0, msp\n"
+                   "mrsne r0, psp\n"
+                   "mov r1, lr\n"
+                   "movs r2, #1\n"
+                   "b f407_fault_capture_exception\n");
 }
 
 __attribute__((naked)) void MemManage_Handler(void)
 {
-    __asm volatile (
-        "tst lr, #4\n"
-        "ite eq\n"
-        "mrseq r0, msp\n"
-        "mrsne r0, psp\n"
-        "mov r1, lr\n"
-        "movs r2, #2\n"
-        "b f407_fault_capture_exception\n");
+    __asm volatile("tst lr, #4\n"
+                   "ite eq\n"
+                   "mrseq r0, msp\n"
+                   "mrsne r0, psp\n"
+                   "mov r1, lr\n"
+                   "movs r2, #2\n"
+                   "b f407_fault_capture_exception\n");
 }
 
 __attribute__((naked)) void BusFault_Handler(void)
 {
-    __asm volatile (
-        "tst lr, #4\n"
-        "ite eq\n"
-        "mrseq r0, msp\n"
-        "mrsne r0, psp\n"
-        "mov r1, lr\n"
-        "movs r2, #3\n"
-        "b f407_fault_capture_exception\n");
+    __asm volatile("tst lr, #4\n"
+                   "ite eq\n"
+                   "mrseq r0, msp\n"
+                   "mrsne r0, psp\n"
+                   "mov r1, lr\n"
+                   "movs r2, #3\n"
+                   "b f407_fault_capture_exception\n");
 }
 
 __attribute__((naked)) void UsageFault_Handler(void)
 {
-    __asm volatile (
-        "tst lr, #4\n"
-        "ite eq\n"
-        "mrseq r0, msp\n"
-        "mrsne r0, psp\n"
-        "mov r1, lr\n"
-        "movs r2, #4\n"
-        "b f407_fault_capture_exception\n");
+    __asm volatile("tst lr, #4\n"
+                   "ite eq\n"
+                   "mrseq r0, msp\n"
+                   "mrsne r0, psp\n"
+                   "mov r1, lr\n"
+                   "movs r2, #4\n"
+                   "b f407_fault_capture_exception\n");
 }
 #else
 void HardFault_Handler(void)

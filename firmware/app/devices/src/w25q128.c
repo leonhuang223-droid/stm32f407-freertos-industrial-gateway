@@ -14,8 +14,8 @@
 #define W25Q_STATUS_WRITE_ENABLE_LATCH 0x02u
 #define W25Q_MAX_TRANSFER (EXTERNAL_FLASH_PAGE_SIZE + 4u)
 
-static status_t raw_transfer(w25q128_t *device, uint8_t *tx, uint8_t *rx,
-                             size_t length)
+static status_t
+raw_transfer(w25q128_t *device, uint8_t *tx, uint8_t *rx, size_t length)
 {
     return spi_device_transfer(device->spi, tx, rx, length);
 }
@@ -27,8 +27,8 @@ static status_t command_only(w25q128_t *device, uint8_t command)
 
 static status_t read_status(w25q128_t *device, uint8_t *status_register)
 {
-    uint8_t tx[2] = { W25Q_COMMAND_READ_STATUS_1, 0xffu };
-    uint8_t rx[2] = { 0u, 0u };
+    uint8_t tx[2] = {W25Q_COMMAND_READ_STATUS_1, 0xffu};
+    uint8_t rx[2] = {0u, 0u};
     status_t status;
 
     if (status_register == 0) {
@@ -93,8 +93,8 @@ static status_t real_wake(w25q128_t *device)
 
 static status_t real_init(w25q128_t *device)
 {
-    uint8_t tx[4] = { W25Q_COMMAND_READ_JEDEC_ID, 0xffu, 0xffu, 0xffu };
-    uint8_t rx[4] = { 0u, 0u, 0u, 0u };
+    uint8_t tx[4] = {W25Q_COMMAND_READ_JEDEC_ID, 0xffu, 0xffu, 0xffu};
+    uint8_t rx[4] = {0u, 0u, 0u, 0u};
     status_t status = real_wake(device);
 
     if (status == SYS_OK) {
@@ -102,8 +102,7 @@ static status_t real_init(w25q128_t *device)
     }
     if (status == SYS_OK) {
         device->health.detected_jedec_id =
-            ((uint32_t)rx[1] << 16u) |
-            ((uint32_t)rx[2] << 8u) | rx[3];
+            ((uint32_t)rx[1] << 16u) | ((uint32_t)rx[2] << 8u) | rx[3];
         if (device->health.detected_jedec_id !=
             device->config.expected_jedec_id) {
             status = ERR_UNSUPPORTED;
@@ -113,8 +112,7 @@ static status_t real_init(w25q128_t *device)
     return status;
 }
 
-static int range_valid(const w25q128_t *device, uint32_t address,
-                       size_t length)
+static int range_valid(const w25q128_t *device, uint32_t address, size_t length)
 {
     return device != 0 && device->health.initialized != 0u &&
            device->health.powered_down == 0u && length != 0u &&
@@ -122,8 +120,8 @@ static int range_valid(const w25q128_t *device, uint32_t address,
            length <= (size_t)(device->config.total_size - address);
 }
 
-static status_t real_read(w25q128_t *device, uint32_t address,
-                          uint8_t *buffer, size_t length)
+static status_t
+real_read(w25q128_t *device, uint32_t address, uint8_t *buffer, size_t length)
 {
     uint8_t tx[W25Q_MAX_TRANSFER];
     uint8_t rx[W25Q_MAX_TRANSFER];
@@ -154,8 +152,10 @@ static status_t real_read(w25q128_t *device, uint32_t address,
     return SYS_OK;
 }
 
-static status_t real_program(w25q128_t *device, uint32_t address,
-                             const uint8_t *data, size_t length)
+static status_t real_program(w25q128_t *device,
+                             uint32_t address,
+                             const uint8_t *data,
+                             size_t length)
 {
     uint8_t tx[W25Q_MAX_TRANSFER];
     size_t offset = 0u;
@@ -166,7 +166,7 @@ static status_t real_program(w25q128_t *device, uint32_t address,
     while (offset < length) {
         uint32_t current_address = address + (uint32_t)offset;
         size_t page_remaining = EXTERNAL_FLASH_PAGE_SIZE -
-            (current_address % EXTERNAL_FLASH_PAGE_SIZE);
+                                (current_address % EXTERNAL_FLASH_PAGE_SIZE);
         size_t chunk = length - offset;
         status_t status;
 
@@ -232,10 +232,12 @@ static status_t real_power_down(w25q128_t *device)
     return status;
 }
 
-static const w25q128_ops_t w25q_ops = {
-    real_init, real_read, real_program, real_erase_sector,
-    real_power_down, real_wake
-};
+static const w25q128_ops_t w25q_ops = {real_init,
+                                       real_read,
+                                       real_program,
+                                       real_erase_sector,
+                                       real_power_down,
+                                       real_wake};
 
 static status_t record_result(w25q128_t *device, status_t status)
 {
@@ -246,7 +248,8 @@ static status_t record_result(w25q128_t *device, status_t status)
     return status;
 }
 
-status_t w25q128_construct(w25q128_t *device, spi_device_t *spi,
+status_t w25q128_construct(w25q128_t *device,
+                           spi_device_t *spi,
                            const w25q128_config_t *config)
 {
     if (device == 0 || spi == 0 || config == 0 ||
@@ -266,11 +269,14 @@ status_t w25q128_construct(w25q128_t *device, spi_device_t *spi,
 status_t w25q128_init(w25q128_t *device)
 {
     return device != 0 && device->ops != 0
-        ? record_result(device, device->ops->init(device)) : ERR_INVALID_ARG;
+               ? record_result(device, device->ops->init(device))
+               : ERR_INVALID_ARG;
 }
 
-status_t w25q128_read(w25q128_t *device, uint32_t address,
-                      uint8_t *buffer, size_t length)
+status_t w25q128_read(w25q128_t *device,
+                      uint32_t address,
+                      uint8_t *buffer,
+                      size_t length)
 {
     status_t status;
 
@@ -284,8 +290,10 @@ status_t w25q128_read(w25q128_t *device, uint32_t address,
     return record_result(device, status);
 }
 
-status_t w25q128_program(w25q128_t *device, uint32_t address,
-                         const uint8_t *data, size_t length)
+status_t w25q128_program(w25q128_t *device,
+                         uint32_t address,
+                         const uint8_t *data,
+                         size_t length)
 {
     status_t status;
 
@@ -316,8 +324,8 @@ status_t w25q128_erase_sector(w25q128_t *device, uint32_t address)
 status_t w25q128_power_down(w25q128_t *device)
 {
     return device != 0 && device->ops != 0
-        ? record_result(device, device->ops->power_down(device))
-        : ERR_INVALID_ARG;
+               ? record_result(device, device->ops->power_down(device))
+               : ERR_INVALID_ARG;
 }
 
 status_t w25q128_wake(w25q128_t *device)
@@ -327,13 +335,12 @@ status_t w25q128_wake(w25q128_t *device)
     if (device == 0 || device->ops == 0) {
         return ERR_INVALID_ARG;
     }
-    status = device->health.initialized != 0u
-        ? device->ops->wake(device) : device->ops->init(device);
+    status = device->health.initialized != 0u ? device->ops->wake(device)
+                                              : device->ops->init(device);
     return record_result(device, status);
 }
 
-status_t w25q128_get_health(const w25q128_t *device,
-                            w25q128_health_t *health)
+status_t w25q128_get_health(const w25q128_t *device, w25q128_health_t *health)
 {
     if (device == 0 || health == 0) {
         return ERR_INVALID_ARG;
@@ -342,14 +349,16 @@ status_t w25q128_get_health(const w25q128_t *device,
     return SYS_OK;
 }
 
-static status_t media_read(void *context, uint32_t address,
-                           uint8_t *buffer, size_t length)
+static status_t
+media_read(void *context, uint32_t address, uint8_t *buffer, size_t length)
 {
     return w25q128_read(context, address, buffer, length);
 }
 
-static status_t media_program(void *context, uint32_t address,
-                              const uint8_t *data, size_t length)
+static status_t media_program(void *context,
+                              uint32_t address,
+                              const uint8_t *data,
+                              size_t length)
 {
     return w25q128_program(context, address, data, length);
 }
@@ -372,8 +381,7 @@ static status_t media_power_down(void *context)
 const storage_media_ops_t *w25q128_storage_media_ops(void)
 {
     static const storage_media_ops_t ops = {
-        media_read, media_program, media_erase, media_wake, media_power_down
-    };
+        media_read, media_program, media_erase, media_wake, media_power_down};
 
     return &ops;
 }
